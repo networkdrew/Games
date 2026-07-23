@@ -1,14 +1,15 @@
-# AI People’s Court
+# AI People's Court
 
-Implementation for the registry id and route slug `ai-peoples-court`.
+Complete browser courtroom game for registry id and route slug
+`ai-peoples-court`.
 
-- `AIPeoplesCourtGame.tsx` is the React entry mounted by
-  `src/pages/ai-peoples-court/index.astro`.
-- The colocated component test protects the honest Phase 1
-  under-construction state.
-- Future game-only components and pure rules belong in `components/` and
-  `logic/` subfolders here.
-- Shared portal shell and future local-model transport remain outside this
-  folder and must be reused rather than duplicated.
+- `AIPeoplesCourtGame.tsx` owns the interactive hearing, evidence reader,
+  questioning, verdict, score, and next-case flow.
+- `logic/cases.ts` contains the original fictional case records.
+- `logic/engine.ts` owns investigation progress, immutable verdicts, and
+  scoring. Case truth and the player's decision are never delegated to a
+  model.
+- Colocated tests cover game flow and the pure court engine.
 
-Public URL: `/ai-peoples-court/`.
+The game has no network dependency and is fully playable at
+`/ai-peoples-court/`.

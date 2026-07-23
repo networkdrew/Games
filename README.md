@@ -43,7 +43,7 @@ different Cloudflare deployment. Nothing here modifies either of those.
 src/
   games/
     ai-dungeon-door/       complete game feature: React entry, UI components, connection lifecycle, deterministic logic, and colocated tests
-    ai-peoples-court/      complete game feature: React entry and colocated tests (Phase 1 scaffold)
+    ai-peoples-court/      complete courtroom game, case records, rules, and tests
   lib/games/            registry.ts (all games), schema.ts, categories.ts
   lib/bridge/client.ts   browser-side client for the local bridge (health/ensure/release, streaming turn+opening requests, one in-flight at a time)
   islands/GameGrid.tsx   portal-only searchable/filterable game grid

@@ -389,6 +389,32 @@
   box-shadow: 0 1.5rem 4rem rgb(5 10 20 / 0.3);
 }
 
+.peoples-court .courtroom-panel {
+  border-color: var(--court-line);
+  color: var(--court-ink);
+  background: var(--court-paper);
+  box-shadow: 0 1rem 2.5rem rgb(5 10 20 / 0.22);
+}
+
+.peoples-court .courtroom-divider,
+.peoples-court .courtroom-party,
+.peoples-court .courtroom-question {
+  border-color: var(--court-line);
+}
+
+.peoples-court .courtroom-bench {
+  color: #fffaf0;
+  background:
+    linear-gradient(rgb(23 35 60 / 0.92), rgb(23 35 60 / 0.98)),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 2.5rem,
+      rgb(255 255 255 / 0.05) 2.5rem,
+      rgb(255 255 255 / 0.05) 2.6rem
+    );
+}
+
 .peoples-court .courtroom-rail {
   background: linear-gradient(
     90deg,
@@ -430,4 +456,95 @@
 
 .peoples-court .courtroom-home:hover {
   background: var(--court-ink-soft);
+}
+
+.peoples-court .courtroom-docket {
+  color: var(--court-brass-strong);
+}
+
+.peoples-court .courtroom-evidence {
+  border-color: var(--court-line);
+  color: var(--court-ink);
+  background: #fffdf8;
+}
+
+.peoples-court .courtroom-evidence:hover,
+.peoples-court .courtroom-evidence[aria-pressed="true"] {
+  border-color: var(--court-brass);
+  background: var(--court-paper-muted);
+}
+
+.peoples-court .courtroom-reviewed,
+.peoples-court .courtroom-score {
+  color: var(--court-brass-strong);
+}
+
+.peoples-court .courtroom-question {
+  background: #fffdf8;
+}
+
+.peoples-court .courtroom-question-button {
+  color: var(--court-ink);
+  text-decoration-color: var(--court-brass);
+  text-underline-offset: 0.2rem;
+}
+
+.peoples-court .courtroom-question-button:hover {
+  text-decoration-line: underline;
+}
+
+.peoples-court .courtroom-question-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+  text-decoration-line: none;
+}
+
+.peoples-court .courtroom-answer {
+  border-color: var(--court-brass);
+  color: var(--court-ink-soft);
+}
+
+.peoples-court .courtroom-document {
+  border-color: #cdbb95;
+  background:
+    linear-gradient(rgb(255 253 248 / 0.94), rgb(255 253 248 / 0.94)),
+    repeating-linear-gradient(
+      transparent 0,
+      transparent 1.45rem,
+      #dce3ec 1.45rem,
+      #dce3ec 1.5rem
+    );
+}
+
+.peoples-court .courtroom-progress {
+  color: var(--court-ink-soft);
+  background: var(--court-paper-muted);
+}
+
+.peoples-court .courtroom-verdict {
+  color: #fff;
+  background: var(--court-ink);
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.peoples-court .courtroom-verdict:hover {
+  background: var(--court-ink-soft);
+  transform: translateY(-1px);
+}
+
+.peoples-court .courtroom-verdict--secondary {
+  color: var(--court-ink);
+  background: var(--court-paper-muted);
+  box-shadow: inset 0 0 0 1px var(--court-line);
+}
+
+.peoples-court .courtroom-verdict--secondary:hover {
+  background: #e2d5bd;
+}
+
+.peoples-court .courtroom-ruling {
+  color: var(--court-ink-soft);
+  background: var(--court-paper-muted);
 }
