@@ -91,7 +91,12 @@ export interface ControlProposalWire {
 
 export type TurnEvent =
   | { type: "start"; requestId: string }
-  | { type: "model"; modelId: string | null; alias: string; friendlyName?: string }
+  | {
+      type: "model";
+      modelId: string | null;
+      alias: string;
+      friendlyName?: string;
+    }
   | { type: "loading" }
   | { type: "delta"; text: string }
   | {
@@ -135,7 +140,9 @@ export class BridgeClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
     try {
-      const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
+      const res = await fetch(`${this.baseUrl}/health`, {
+        signal: controller.signal,
+      });
       if (!res.ok) return { reachable: false, installed: false, loaded: false };
       const data = (await res.json()) as {
         ok?: boolean;
@@ -181,7 +188,9 @@ export class BridgeClient {
   /** Manual "Release local model" advanced-settings action — never called automatically. */
   async releaseModel(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/dungeon/release`, { method: "POST" });
+      const res = await fetch(`${this.baseUrl}/api/dungeon/release`, {
+        method: "POST",
+      });
       if (!res.ok) return false;
       const data = (await res.json()) as { ok?: boolean };
       return Boolean(data.ok);
@@ -254,7 +263,12 @@ export class BridgeClient {
       });
 
       if (!res.ok || !res.body) {
-        return { proposal: null, fallback: true, corrected: false, narration: "" };
+        return {
+          proposal: null,
+          fallback: true,
+          corrected: false,
+          narration: "",
+        };
       }
 
       const reader = res.body.getReader();
@@ -273,7 +287,13 @@ export class BridgeClient {
       return { proposal, fallback, corrected, narration, stats };
     } catch {
       if (controller.signal.aborted) {
-        return { proposal: null, fallback: true, corrected: false, narration, aborted: true };
+        return {
+          proposal: null,
+          fallback: true,
+          corrected: false,
+          narration,
+          aborted: true,
+        };
       }
       return { proposal: null, fallback: true, corrected: false, narration };
     } finally {

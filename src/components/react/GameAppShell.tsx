@@ -43,7 +43,7 @@ export default function GameAppShell({
     <div
       className={`${className ?? ""} bg-bg text-text flex h-full min-h-0 flex-col`}
     >
-      <header className="border-border bg-bg flex h-14 shrink-0 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:px-4">
+      <header className="border-border bg-bg flex h-14 shrink-0 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)] pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] sm:px-4">
         <a
           href={backHref}
           className="text-text-muted hover:bg-bg-sunken hover:text-text inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm transition-colors"
@@ -70,7 +70,7 @@ export default function GameAppShell({
           )}
         </div>
       </header>
-      <div className="min-h-0 flex-1 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+      <div className="min-h-0 flex-1 pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
         {loading ?? children}
       </div>
     </div>

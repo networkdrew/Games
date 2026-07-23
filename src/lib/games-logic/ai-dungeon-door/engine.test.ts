@@ -13,7 +13,9 @@ import {
 import { getScenario, SCENARIOS } from "./scenarios";
 import type { ControlProposal } from "./types";
 
-function blankProposal(overrides: Partial<ControlProposal> = {}): ControlProposal {
+function blankProposal(
+  overrides: Partial<ControlProposal> = {},
+): ControlProposal {
   return {
     intent: "test",
     healthDelta: 0,
@@ -341,7 +343,11 @@ describe("applyControlProposal", () => {
     let state = createNewGame(1); // trapped-adventurer
     const scenario = getScenario(state.scenarioId);
     // Push trust up to (and past) the scenario's own win threshold first.
-    for (let i = 0; i < 5 && state.trust < 50 && state.status === "playing"; i++) {
+    for (
+      let i = 0;
+      i < 5 && state.trust < 50 && state.status === "playing";
+      i++
+    ) {
       const result = applyControlProposal(
         state,
         scenario,

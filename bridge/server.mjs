@@ -71,7 +71,10 @@ function corsHeaders(origin) {
 
 function sendJson(res, status, origin, body) {
   if (res.writableEnded) return;
-  res.writeHead(status, { "Content-Type": "application/json", ...corsHeaders(origin) });
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    ...corsHeaders(origin),
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -122,8 +125,10 @@ function validateCommonFields(body) {
   if (typeof body !== "object" || body === null) return "invalid body";
   if (!isNonEmptyString(body.characterPrompt, MAX_FIELD_LENGTH))
     return "invalid characterPrompt";
-  if (!isNonEmptyString(body.secretTruth, MAX_FIELD_LENGTH)) return "invalid secretTruth";
-  if (!isNonEmptyString(body.environment, MAX_FIELD_LENGTH)) return "invalid environment";
+  if (!isNonEmptyString(body.secretTruth, MAX_FIELD_LENGTH))
+    return "invalid secretTruth";
+  if (!isNonEmptyString(body.environment, MAX_FIELD_LENGTH))
+    return "invalid environment";
   return null;
 }
 
@@ -147,11 +152,16 @@ function validateTurnBody(body) {
     return "invalid bounds";
   }
 
-  if (!validateAllowlist(body.clueAllowlist ?? [])) return "invalid clueAllowlist";
-  if (!validateAllowlist(body.itemAllowlist ?? [])) return "invalid itemAllowlist";
+  if (!validateAllowlist(body.clueAllowlist ?? []))
+    return "invalid clueAllowlist";
+  if (!validateAllowlist(body.itemAllowlist ?? []))
+    return "invalid itemAllowlist";
 
   if (body.endings !== undefined) {
-    if (!Array.isArray(body.endings) || body.endings.length > MAX_ALLOWLIST_ENTRIES)
+    if (
+      !Array.isArray(body.endings) ||
+      body.endings.length > MAX_ALLOWLIST_ENTRIES
+    )
       return "invalid endings";
     for (const e of body.endings) {
       if (
@@ -167,7 +177,10 @@ function validateTurnBody(body) {
   }
 
   if (body.memoryFacts !== undefined) {
-    if (!Array.isArray(body.memoryFacts) || body.memoryFacts.length > MAX_MEMORY_FACTS)
+    if (
+      !Array.isArray(body.memoryFacts) ||
+      body.memoryFacts.length > MAX_MEMORY_FACTS
+    )
       return "invalid memoryFacts";
     for (const fact of body.memoryFacts) {
       if (typeof fact !== "string" || fact.length > MAX_MEMORY_FACT_LENGTH)
@@ -183,10 +196,17 @@ function validateTurnBody(body) {
       return "invalid recentExchanges";
     }
     for (const ex of body.recentExchanges) {
-      if (typeof ex !== "object" || ex === null) return "invalid recent exchange entry";
-      if (typeof ex.action !== "string" || ex.action.length > MAX_EXCHANGE_FIELD_LENGTH)
+      if (typeof ex !== "object" || ex === null)
+        return "invalid recent exchange entry";
+      if (
+        typeof ex.action !== "string" ||
+        ex.action.length > MAX_EXCHANGE_FIELD_LENGTH
+      )
         return "invalid recent exchange action";
-      if (typeof ex.narration !== "string" || ex.narration.length > MAX_EXCHANGE_FIELD_LENGTH)
+      if (
+        typeof ex.narration !== "string" ||
+        ex.narration.length > MAX_EXCHANGE_FIELD_LENGTH
+      )
         return "invalid recent exchange narration";
     }
   }
@@ -246,12 +266,18 @@ export function createRequestHandler(
     }
 
     if (busy) {
-      sendJson(res, 429, origin, { ok: false, error: "a generation is already in progress" });
+      sendJson(res, 429, origin, {
+        ok: false,
+        error: "a generation is already in progress",
+      });
       return;
     }
     const now = Date.now();
     if (now - lastRequestAt < MIN_REQUEST_INTERVAL_MS) {
-      sendJson(res, 429, origin, { ok: false, error: "rate limited, slow down" });
+      sendJson(res, 429, origin, {
+        ok: false,
+        error: "rate limited, slow down",
+      });
       return;
     }
 
@@ -277,7 +303,12 @@ export function createRequestHandler(
       if (!config) {
         logSafe("configured model not installed — signaling fallback");
         writeEvent(res, { type: "model", modelId: null, alias: MODEL_ALIAS });
-        writeEvent(res, { type: "control", proposal: null, fallback: true, corrected: false });
+        writeEvent(res, {
+          type: "control",
+          proposal: null,
+          fallback: true,
+          corrected: false,
+        });
         writeEvent(res, { type: "done", stats: { fallback: true } });
         res.end();
         return;
@@ -299,7 +330,9 @@ export function createRequestHandler(
       const systemPrompt =
         mode === "opening" ? buildOpeningSystemPrompt() : buildSystemPrompt();
       const userPrompt =
-        mode === "opening" ? buildOpeningUserPrompt(body) : buildUserPrompt(body);
+        mode === "opening"
+          ? buildOpeningUserPrompt(body)
+          : buildUserPrompt(body);
       logSafe(
         `mode=${mode} model=${config.lmStudioId} stream=true prompt_chars≈${systemPrompt.length + userPrompt.length}`,
       );
@@ -354,7 +387,8 @@ export function createRequestHandler(
         if (hasResponseMarker(buffer)) {
           responseStarted = true;
           const remainder = textAfterResponseMarker(buffer);
-          if (remainder.length > 0) writeEvent(res, { type: "delta", text: remainder });
+          if (remainder.length > 0)
+            writeEvent(res, { type: "delta", text: remainder });
         }
       };
 
@@ -443,7 +477,11 @@ export function createRequestHandler(
           });
           writeEvent(res, {
             type: "done",
-            stats: { fallback: false, corrected: true, corrections: corrections.length },
+            stats: {
+              fallback: false,
+              corrected: true,
+              corrections: corrections.length,
+            },
           });
           logSafe("correction succeeded");
           res.end();
@@ -451,9 +489,19 @@ export function createRequestHandler(
         }
       }
 
-      logSafe("correction also failed — signaling fallback to deterministic engine");
-      writeEvent(res, { type: "control", proposal: null, fallback: true, corrected: true });
-      writeEvent(res, { type: "done", stats: { fallback: true, corrected: true } });
+      logSafe(
+        "correction also failed — signaling fallback to deterministic engine",
+      );
+      writeEvent(res, {
+        type: "control",
+        proposal: null,
+        fallback: true,
+        corrected: true,
+      });
+      writeEvent(res, {
+        type: "done",
+        stats: { fallback: true, corrected: true },
+      });
       res.end();
     } catch (err) {
       logSafe(`error: ${err instanceof Error ? err.message : "unknown"}`);
@@ -488,7 +536,11 @@ export function createRequestHandler(
     if (req.method === "GET" && url.pathname === "/health") {
       const config = await deps.resolveAlias(MODEL_ALIAS);
       if (!config) {
-        sendJson(res, 200, origin, { ok: false, installed: false, loaded: false });
+        sendJson(res, 200, origin, {
+          ok: false,
+          installed: false,
+          loaded: false,
+        });
         return;
       }
       const state = await deps.getModelState(config.lmStudioId);

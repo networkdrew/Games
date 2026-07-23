@@ -81,7 +81,9 @@ function stubConnectedBridge({
         } as Response);
       }
       if (href.includes("/api/dungeon/turn")) {
-        const body = JSON.parse(String(init?.body ?? "{}")) as { mode?: string };
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          mode?: string;
+        };
         const events = body.mode === "opening" ? openingEvents : turnEvents;
         return Promise.resolve({
           ok: true,
@@ -92,6 +94,24 @@ function stubConnectedBridge({
     }),
   );
 }
+
+describe("AIDungeonDoorGame — bridge unreachable at startup", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a game-themed loading screen instead of the normal chat UI while retrying", async () => {
+    stubUnreachableBridge();
+    render(<AIDungeonDoorGame initialSeed={0} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/waking the dungeon/i)).toBeInTheDocument(),
+    );
+    // The normal free-form composer must not be reachable yet — this is a
+    // loading screen, not the chat UI with a disabled input.
+    expect(screen.queryByLabelText(/what do you do/i)).not.toBeInTheDocument();
+  });
+});
 
 describe("AIDungeonDoorGame — offline/deterministic mode", () => {
   afterEach(() => {
@@ -112,7 +132,9 @@ describe("AIDungeonDoorGame — offline/deterministic mode", () => {
     const input = screen.getByLabelText(/what do you do/i);
     expect(input).toHaveAttribute("placeholder", "What do you do?");
     // No suggestion/example-prompt buttons anywhere in the composer.
-    expect(screen.queryByRole("button", { name: /listen/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /listen/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("advances the turn counter and shows deterministic narration, marked offline", async () => {
@@ -227,7 +249,12 @@ describe("AIDungeonDoorGame — AI-connected streaming mode", () => {
     stubConnectedBridge({
       openingEvents: [
         { type: "start", requestId: "abc" },
-        { type: "model", modelId: "ornith-1.0-9b", alias: "dungeon-chat", friendlyName: "Ornith 9B" },
+        {
+          type: "model",
+          modelId: "ornith-1.0-9b",
+          alias: "dungeon-chat",
+          friendlyName: "Ornith 9B",
+        },
         { type: "delta", text: "Something breathes " },
         { type: "delta", text: "on the other side of the door." },
         { type: "opening", ok: true, fallback: false },
@@ -250,14 +277,24 @@ describe("AIDungeonDoorGame — AI-connected streaming mode", () => {
   it("streams narration for a turn live and applies the resulting control proposal", async () => {
     stubConnectedBridge({
       openingEvents: [
-        { type: "model", modelId: "ornith-1.0-9b", alias: "dungeon-chat", friendlyName: "Ornith 9B" },
+        {
+          type: "model",
+          modelId: "ornith-1.0-9b",
+          alias: "dungeon-chat",
+          friendlyName: "Ornith 9B",
+        },
         { type: "delta", text: "Something breathes beyond the door." },
         { type: "opening", ok: true, fallback: false },
         { type: "done", stats: {} },
       ],
       turnEvents: [
         { type: "start", requestId: "t1" },
-        { type: "model", modelId: "ornith-1.0-9b", alias: "dungeon-chat", friendlyName: "Ornith 9B" },
+        {
+          type: "model",
+          modelId: "ornith-1.0-9b",
+          alias: "dungeon-chat",
+          friendlyName: "Ornith 9B",
+        },
         { type: "delta", text: "You press your ear to the door " },
         { type: "delta", text: "and hear slow, even breathing." },
         {
@@ -306,14 +343,24 @@ describe("AIDungeonDoorGame — AI-connected streaming mode", () => {
   it("falls back to deterministic narration when the bridge reports no valid proposal, without treating it as a disconnect", async () => {
     stubConnectedBridge({
       openingEvents: [
-        { type: "model", modelId: "ornith-1.0-9b", alias: "dungeon-chat", friendlyName: "Ornith 9B" },
+        {
+          type: "model",
+          modelId: "ornith-1.0-9b",
+          alias: "dungeon-chat",
+          friendlyName: "Ornith 9B",
+        },
         { type: "delta", text: "Something breathes beyond the door." },
         { type: "opening", ok: true, fallback: false },
         { type: "done", stats: {} },
       ],
       turnEvents: [
         { type: "start", requestId: "t1" },
-        { type: "model", modelId: "ornith-1.0-9b", alias: "dungeon-chat", friendlyName: "Ornith 9B" },
+        {
+          type: "model",
+          modelId: "ornith-1.0-9b",
+          alias: "dungeon-chat",
+          friendlyName: "Ornith 9B",
+        },
         { type: "control", proposal: null, fallback: true, corrected: false },
         { type: "done", stats: {} },
       ],
@@ -402,6 +449,9 @@ describe("AIDungeonDoorGame — AI-connected streaming mode", () => {
     );
 
     // Resolve the abandoned first request late — must not resurrect stale state.
-    resolveTurnFetch?.({ ok: true, body: ndjsonBody([]) } as unknown as Response);
+    resolveTurnFetch?.({
+      ok: true,
+      body: ndjsonBody([]),
+    } as unknown as Response);
   });
 });

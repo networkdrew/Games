@@ -51,8 +51,14 @@ export default function DiagnosticsPanel({
       </summary>
       <dl className="flex flex-col gap-0.5 px-3 pb-3">
         <Row label="Connection state" value={connectionState} />
-        <Row label="Bridge reachable" value={String(health?.reachable ?? false)} />
-        <Row label="Model installed" value={String(health?.installed ?? false)} />
+        <Row
+          label="Bridge reachable"
+          value={String(health?.reachable ?? false)}
+        />
+        <Row
+          label="Model installed"
+          value={String(health?.installed ?? false)}
+        />
         <Row label="Model loaded" value={String(health?.loaded ?? false)} />
         <Row
           label="Model"

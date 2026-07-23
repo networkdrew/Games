@@ -43,7 +43,9 @@ export interface UseBridgeConnectionResult {
   readyToWarm: boolean;
 }
 
-export function useBridgeConnection(bridge: BridgeClient): UseBridgeConnectionResult {
+export function useBridgeConnection(
+  bridge: BridgeClient,
+): UseBridgeConnectionResult {
   const [state, setState] = useState<ConnectionState>("connecting");
   const [health, setHealth] = useState<HealthResult | null>(null);
   const [readyToWarm, setReadyToWarm] = useState(false);
@@ -63,7 +65,8 @@ export function useBridgeConnection(bridge: BridgeClient): UseBridgeConnectionRe
     async (mode: "initial" | "reconnect") => {
       const myGeneration = generationRef.current;
       const result = await bridge.checkHealth();
-      if (cancelledRef.current || myGeneration !== generationRef.current) return;
+      if (cancelledRef.current || myGeneration !== generationRef.current)
+        return;
       setHealth(result);
 
       if (!result.reachable) {
@@ -74,7 +77,9 @@ export function useBridgeConnection(bridge: BridgeClient): UseBridgeConnectionRe
           return;
         }
         setState(mode === "reconnect" ? "reconnecting" : "connecting");
-        const delay = BACKOFF_MS[attemptRef.current - 1] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
+        const delay =
+          BACKOFF_MS[attemptRef.current - 1] ??
+          BACKOFF_MS[BACKOFF_MS.length - 1];
         timerRef.current = setTimeout(() => connect(mode), delay);
         return;
       }
@@ -95,7 +100,8 @@ export function useBridgeConnection(bridge: BridgeClient): UseBridgeConnectionRe
 
       setState("loading-model");
       const ensured = await bridge.ensureModel();
-      if (cancelledRef.current || myGeneration !== generationRef.current) return;
+      if (cancelledRef.current || myGeneration !== generationRef.current)
+        return;
       if (!ensured.ok) {
         // Another tab may be mid-load (bridge single-flights) — a short
         // health recheck resolves that without treating it as a failure.
@@ -117,7 +123,9 @@ export function useBridgeConnection(bridge: BridgeClient): UseBridgeConnectionRe
       cancelledRef.current = true;
       clearTimer();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Intentionally runs once per mount only — `connect` is stable enough
+    // in practice (only depends on `bridge`, which is a ref-held singleton)
+    // and re-running this on every render would restart the connection loop.
   }, []);
 
   const retry = useCallback(() => {
@@ -125,7 +133,9 @@ export function useBridgeConnection(bridge: BridgeClient): UseBridgeConnectionRe
     cancelledRef.current = false;
     attemptRef.current = 0;
     generationRef.current += 1;
-    connect(state === "reconnecting" || state === "offline" ? "reconnect" : "initial");
+    connect(
+      state === "reconnecting" || state === "offline" ? "reconnect" : "initial",
+    );
   }, [connect, state]);
 
   const markReady = useCallback(() => {

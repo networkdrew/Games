@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { buttonPrimary, iconButton, textField } from "@/components/react/styles";
+import {
+  buttonPrimary,
+  iconButton,
+  textField,
+} from "@/components/react/styles";
 import Icon from "@/components/react/Icon";
 
 const MAX_LENGTH = 500;

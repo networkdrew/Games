@@ -358,3 +358,76 @@
 .door-scene--lost .door-scene__fog {
   animation-duration: 30s;
 }
+
+/* AI People's Court keeps its own restrained navy-and-brass identity inside
+   this scope. These tokens do not alter the portal or AI Dungeon Door. */
+.peoples-court {
+  --court-ink: #17233c;
+  --court-ink-soft: #314260;
+  --court-paper: #fbf7ee;
+  --court-paper-muted: #ede5d5;
+  --court-brass: #a9792b;
+  --court-brass-strong: #80591d;
+  --court-line: #d4c6aa;
+}
+
+.peoples-court .courtroom-backdrop {
+  background:
+    linear-gradient(rgb(23 35 60 / 0.88), rgb(23 35 60 / 0.96)),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 4rem,
+      rgb(255 255 255 / 0.04) 4rem,
+      rgb(255 255 255 / 0.04) 4.1rem
+    );
+}
+
+.peoples-court .courtroom-card {
+  border-color: var(--court-line);
+  background: var(--court-paper);
+  box-shadow: 0 1.5rem 4rem rgb(5 10 20 / 0.3);
+}
+
+.peoples-court .courtroom-rail {
+  background: linear-gradient(
+    90deg,
+    var(--court-brass-strong),
+    #d0aa62,
+    var(--court-brass-strong)
+  );
+}
+
+.peoples-court .courtroom-seal {
+  border-color: var(--court-brass);
+  color: var(--court-brass-strong);
+  background: var(--court-paper-muted);
+  box-shadow:
+    0 0 0 0.35rem var(--court-paper),
+    0 0 0 0.45rem var(--court-line);
+}
+
+.peoples-court .courtroom-kicker {
+  color: var(--court-brass-strong);
+}
+
+.peoples-court .courtroom-heading {
+  color: var(--court-ink);
+}
+
+.peoples-court .courtroom-copy {
+  color: var(--court-ink-soft);
+}
+
+.peoples-court .courtroom-note {
+  color: #665a46;
+}
+
+.peoples-court .courtroom-home {
+  color: #fff;
+  background: var(--court-ink);
+}
+
+.peoples-court .courtroom-home:hover {
+  background: var(--court-ink-soft);
+}

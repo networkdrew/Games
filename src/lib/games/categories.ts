@@ -13,6 +13,13 @@ const rawCategories = [
       "Type what you do; a deterministic engine decides what happens next.",
     icon: "scroll-text",
   },
+  {
+    id: "simulation",
+    name: "Simulations",
+    description:
+      "Step into a role and make the decisions that shape the outcome.",
+    icon: "hammer",
+  },
 ] as const satisfies readonly Category[];
 
 export const categories: readonly Category[] = rawCategories.map((c) =>

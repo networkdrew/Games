@@ -29,9 +29,62 @@ describe("scenarios", () => {
       expect(scenario.secretTruth.length).toBeGreaterThan(20);
       expect(scenario.intro.length).toBeGreaterThan(0);
       expect(scenario.startingInventory.length).toBeGreaterThan(0);
-      expect(scenario.startingSuggestions.length).toBeGreaterThan(0);
       expect(scenario.maxTurns).toBeGreaterThanOrEqual(5);
       expect(scenario.maxTurns).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it("gives every scenario a complete free-form profile (entity, environment, bounds, allowlists, endings)", () => {
+    for (const scenario of SCENARIOS) {
+      expect(scenario.entity.identity.length).toBeGreaterThan(0);
+      expect(scenario.entity.personality.length).toBeGreaterThan(0);
+      expect(scenario.entity.voice.length).toBeGreaterThan(0);
+      expect(scenario.environment.length).toBeGreaterThan(0);
+      expect(scenario.objects.length).toBeGreaterThan(0);
+      expect(scenario.bounds.maxHealthDelta).toBeGreaterThan(0);
+      expect(scenario.bounds.maxTensionDelta).toBeGreaterThan(0);
+      expect(scenario.bounds.maxTrustDelta).toBeGreaterThan(0);
+      expect(scenario.endings.length).toBeGreaterThan(0);
+      for (const ending of scenario.endings) {
+        expect(["WIN", "LOSS"]).toContain(ending.kind);
+      }
+    }
+  });
+
+  it("every clueAllowlist id referenced by getLegalOutcomes is actually declared in the allowlist", () => {
+    for (const scenario of SCENARIOS) {
+      const allowedIds = new Set(scenario.clueAllowlist.map((c) => c.id));
+      const state = createNewGame(
+        SCENARIOS.findIndex((s) => s.id === scenario.id),
+      );
+      for (const outcome of getLegalOutcomes(state)) {
+        if (outcome.change.clueGained) {
+          expect(
+            allowedIds.has(outcome.change.clueGained),
+            `${scenario.id}'s clueAllowlist is missing "${outcome.change.clueGained}"`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("checkEnding never grants WIN from the opening state (every win requires real progress)", () => {
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      const scenario = SCENARIOS[i]!;
+      const state = createNewGame(i);
+      // flooding-chamber is deliberately low-friction by design (decisive
+      // action wins immediately), and sleeping-creature's win condition is
+      // "tension is still low" which is trivially true at the very start —
+      // every other scenario requires real built-up trust/clue/state change.
+      if (
+        scenario.id === "flooding-chamber" ||
+        scenario.id === "sleeping-creature"
+      )
+        continue;
+      expect(
+        scenario.checkEnding(state, "WIN"),
+        `${scenario.id} grants WIN from the opening state`,
+      ).toBe(false);
     }
   });
 

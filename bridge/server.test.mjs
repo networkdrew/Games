@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createRequestHandler } from "./server.mjs";
+import { MODEL_ALIAS, getModelConfig } from "./models.mjs";
 
 const ALLOWED_ORIGIN = "https://games.drewcassidy.dev";
 
@@ -22,7 +23,12 @@ function withServer(deps, fn) {
     getModelState: async () => "loaded",
     ensureModelLoaded: async () => ({ alreadyLoaded: true }),
     releaseModel: async () => true,
-    streamChatCompletion: async () => ({ text: "", firstTokenMs: null, totalMs: 0, chunks: 0 }),
+    streamChatCompletion: async () => ({
+      text: "",
+      firstTokenMs: null,
+      totalMs: 0,
+      chunks: 0,
+    }),
     chatCompletionOnce: async () => null,
     ...deps,
   };
@@ -66,7 +72,11 @@ async function readNdjson(res) {
     .map((l) => JSON.parse(l));
 }
 
-const BOUNDS = { healthMagnitude: 30, tensionMagnitude: 25, trustMagnitude: 25 };
+const BOUNDS = {
+  healthMagnitude: 30,
+  tensionMagnitude: 25,
+  trustMagnitude: 25,
+};
 const CLUES = [{ id: "labored-breathing", hint: "revealed by listening" }];
 const ENDINGS = [{ id: "freed", kind: "WIN", hint: "trust >= 50" }];
 
@@ -134,7 +144,10 @@ test("turn: streams narration and a valid control proposal on success", async ()
       assert.equal(events[1].modelId, "qwen/qwen3.5-9b");
 
       const deltas = events.filter((e) => e.type === "delta");
-      assert.ok(deltas.length > 1, "expected more than one streamed delta chunk");
+      assert.ok(
+        deltas.length > 1,
+        "expected more than one streamed delta chunk",
+      );
       const joined = deltas.map((d) => d.text).join("");
       assert.match(joined, /A low voice answers softly/);
       // Control metadata must never leak into what's streamed to the player.
@@ -191,7 +204,9 @@ test("turn: ignores an unlisted clue id individually without discarding good nar
       const controlEvent = events.find((e) => e.type === "control");
       assert.equal(controlEvent.proposal.discoverClue, null);
       assert.equal(controlEvent.fallback, false);
-      assert.ok(controlEvent.corrections.some((c) => c.includes("discover_clue")));
+      assert.ok(
+        controlEvent.corrections.some((c) => c.includes("discover_clue")),
+      );
     },
   );
 });
@@ -335,7 +350,12 @@ test("ensure: single request triggers a load and reports it", async () => {
 test("release: unloads the configured model", async () => {
   let releasedId = null;
   await withServer(
-    { releaseModel: async (id) => { releasedId = id; return true; } },
+    {
+      releaseModel: async (id) => {
+        releasedId = id;
+        return true;
+      },
+    },
     async (baseUrl) => {
       const res = await fetch(`${baseUrl}/api/dungeon/release`, {
         method: "POST",
@@ -343,7 +363,10 @@ test("release: unloads the configured model", async () => {
       });
       const data = await res.json();
       assert.equal(data.ok, true);
-      assert.equal(releasedId, "qwen/qwen3.5-9b");
+      // /api/dungeon/release intentionally reads the real, currently
+      // configured model (never the test's injected `resolveAlias` stub) —
+      // it must always release exactly what this bridge actually loaded.
+      assert.equal(releasedId, getModelConfig(MODEL_ALIAS).lmStudioId);
     },
   );
 });
@@ -352,7 +375,10 @@ test("turn: rejects requests from an unapproved origin", async () => {
   await withServer({}, async (baseUrl) => {
     const res = await fetch(`${baseUrl}/api/dungeon/turn`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://evil.example",
+      },
       body: JSON.stringify(BASE_TURN_BODY),
     });
     assert.equal(res.status, 403);
@@ -376,7 +402,10 @@ test("turn: rejects an oversized request body", async () => {
     const res = await fetch(`${baseUrl}/api/dungeon/turn`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
-      body: JSON.stringify({ ...BASE_TURN_BODY, playerAction: "x".repeat(20_000) }),
+      body: JSON.stringify({
+        ...BASE_TURN_BODY,
+        playerAction: "x".repeat(20_000),
+      }),
     });
     assert.equal(res.status, 413);
   });
@@ -393,7 +422,10 @@ test("turn: rate limits a second request made immediately after the first", asyn
       const makeRequest = () =>
         fetch(`${baseUrl}/api/dungeon/turn`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+          headers: {
+            "Content-Type": "application/json",
+            Origin: ALLOWED_ORIGIN,
+          },
           body: JSON.stringify(BASE_TURN_BODY),
         });
       const first = await makeRequest();
@@ -412,7 +444,10 @@ test("answers a CORS preflight for an approved origin", async () => {
       headers: { Origin: ALLOWED_ORIGIN },
     });
     assert.equal(res.status, 204);
-    assert.equal(res.headers.get("access-control-allow-origin"), ALLOWED_ORIGIN);
+    assert.equal(
+      res.headers.get("access-control-allow-origin"),
+      ALLOWED_ORIGIN,
+    );
   });
 });
 

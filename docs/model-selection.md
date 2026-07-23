@@ -1,6 +1,17 @@
-# Model selection
+# Model selection (superseded — see dungeon-chat-model-selection.md)
 
-## Result
+> **This document is historical.** It covers the original legal-outcome
+> protocol era, where `ornith-1.0-9b` was the default. AI Dungeon Door has
+> since moved to a free-form, model-as-game-master protocol with a full
+> reproducible model-evaluation harness; the current default is
+> `allenai_sera-8b`. See
+> [docs/dungeon-chat-model-selection.md](dungeon-chat-model-selection.md)
+> for the current result and evidence. Kept below for the still-relevant
+> historical findings (the reasoning-mode discovery in particular still
+> applies to any reasoning-capable model, including Ornith, which remains
+> installed as the `dungeon-chat-reference` alias).
+
+## Result (historical — legal-outcome protocol era)
 
 **Primary (default) model: `ornith-1.0-9b`** — the exact identifier LM Studio
 reports via `GET /v1/models` (queried live, never assumed). Confirmed on this

@@ -6,7 +6,11 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { LM_STUDIO_URL, LM_STUDIO_TIMEOUT_MS, MODEL_LOAD_TIMEOUT_MS } from "./config.mjs";
+import {
+  LM_STUDIO_URL,
+  LM_STUDIO_TIMEOUT_MS,
+  MODEL_LOAD_TIMEOUT_MS,
+} from "./config.mjs";
 import { getModelConfig } from "./models.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -20,7 +24,9 @@ export async function listModelIds() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LM_STUDIO_TIMEOUT_MS);
   try {
-    const res = await fetch(`${LM_STUDIO_URL}/v1/models`, { signal: controller.signal });
+    const res = await fetch(`${LM_STUDIO_URL}/v1/models`, {
+      signal: controller.signal,
+    });
     if (!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data?.data) ? data.data.map((m) => m.id) : [];
@@ -40,7 +46,9 @@ export async function getModelState(lmStudioId) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LM_STUDIO_TIMEOUT_MS);
   try {
-    const res = await fetch(`${LM_STUDIO_URL}/api/v0/models`, { signal: controller.signal });
+    const res = await fetch(`${LM_STUDIO_URL}/api/v0/models`, {
+      signal: controller.signal,
+    });
     if (!res.ok) return "unknown";
     const data = await res.json();
     const entry = (data?.data ?? []).find((m) => m.id === lmStudioId);
@@ -184,7 +192,12 @@ export async function streamChatCompletion({
     });
 
     if (!res.ok || !res.body) {
-      return { text: null, firstTokenMs: null, totalMs: Date.now() - startedAt, chunks: 0 };
+      return {
+        text: null,
+        firstTokenMs: null,
+        totalMs: Date.now() - startedAt,
+        chunks: 0,
+      };
     }
 
     const reader = res.body.getReader();

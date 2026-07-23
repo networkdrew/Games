@@ -23,6 +23,7 @@ describe("games registry", () => {
 
   it("finds a game by slug", () => {
     expect(getGameBySlug("ai-dungeon-door")?.name).toBe("AI Dungeon Door");
+    expect(getGameBySlug("ai-peoples-court")?.name).toBe("AI People’s Court");
     expect(getGameBySlug("does-not-exist")).toBeUndefined();
   });
 

@@ -1,0 +1,21 @@
+---
+import GameLayout from "@/layouts/GameLayout.astro";
+import { getGameById } from "@/lib/games/registry";
+import AIPeoplesCourtGame from "@/islands/ai-peoples-court/AIPeoplesCourtGame";
+
+const game = getGameById("ai-peoples-court");
+if (!game)
+  throw new Error("ai-peoples-court is missing from the games registry");
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "Game",
+  name: game.name,
+  description: game.tagline,
+  genre: "Courtroom Simulation",
+};
+---
+
+<GameLayout game={game} structuredData={structuredData}>
+  <AIPeoplesCourtGame client:only="react" />
+</GameLayout>

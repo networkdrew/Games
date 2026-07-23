@@ -25,7 +25,10 @@ import EventLog from "./EventLog";
 import ActionInput from "./ActionInput";
 import ConnectionStatus from "./ConnectionStatus";
 import DiagnosticsPanel, { type DiagnosticsData } from "./DiagnosticsPanel";
-import { useBridgeConnection, type ConnectionState } from "./useBridgeConnection";
+import {
+  useBridgeConnection,
+  type ConnectionState,
+} from "./useBridgeConnection";
 
 /** Rough chars-per-token heuristic for the diagnostics panel's "approx tokens" display — the bridge's streamed responses don't reliably report usage, so this is clearly labeled as approximate, never exact. */
 function approxTokens(text: string): number {
@@ -39,8 +42,12 @@ const LOADING_COPY: Partial<Record<ConnectionState, string>> = {
   failed: "The dungeon is quiet.",
 };
 
-function loadingHeadline(state: ConnectionState, friendlyName?: string): string {
-  if (state === "loading-model" && friendlyName) return `Loading ${friendlyName}…`;
+function loadingHeadline(
+  state: ConnectionState,
+  friendlyName?: string,
+): string {
+  if (state === "loading-model" && friendlyName)
+    return `Loading ${friendlyName}…`;
   return LOADING_COPY[state] ?? "Preparing the encounter…";
 }
 
@@ -131,8 +138,12 @@ export default function AIDungeonDoorGame({
     if (!canWarm) return;
     openingRequestedRef.current = true;
     void runOpening();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connection.readyToWarm, connection.state, gameState.openingDelivered, pending]);
+  }, [
+    connection.readyToWarm,
+    connection.state,
+    gameState.openingDelivered,
+    pending,
+  ]);
 
   // Offline/failed at startup: don't leave the player staring at a loading
   // screen forever — fall back to the scenario's own deterministic intro.
@@ -146,7 +157,6 @@ export default function AIDungeonDoorGame({
         appendExchange(prev, "", scenario.intro, false, true),
       ),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection.state, gameState.openingDelivered, pending, scenario.intro]);
 
   async function runOpening() {
@@ -221,7 +231,11 @@ export default function AIDungeonDoorGame({
   }
 
   async function handleAction(rawInput: string) {
-    if (pending || gameState.status !== "playing" || !gameState.openingDelivered)
+    if (
+      pending ||
+      gameState.status !== "playing" ||
+      !gameState.openingDelivered
+    )
       return;
 
     if (isInventoryCheck(rawInput, gameState.inventory)) {
@@ -229,7 +243,9 @@ export default function AIDungeonDoorGame({
         gameState,
         rawInput,
       );
-      setGameState(appendExchange(nextState, rawInput, narration, false, false));
+      setGameState(
+        appendExchange(nextState, rawInput, narration, false, false),
+      );
       return;
     }
 
@@ -241,7 +257,8 @@ export default function AIDungeonDoorGame({
     const useAi = connection.state === "ready";
 
     if (!useAi) {
-      const wasOffline = connection.state === "offline" || connection.state === "failed";
+      const wasOffline =
+        connection.state === "offline" || connection.state === "failed";
       const { state: nextState } = applyDeterministicAction(
         gameState,
         rawInput,
@@ -391,7 +408,9 @@ export default function AIDungeonDoorGame({
     connection.state === "connecting" ||
     connection.state === "loading-model" ||
     connection.state === "failed" ||
-    (connection.state === "warming" && waitingForFirstToken && !gameState.openingDelivered);
+    (connection.state === "warming" &&
+      waitingForFirstToken &&
+      !gameState.openingDelivered);
 
   return (
     <GameAppShell

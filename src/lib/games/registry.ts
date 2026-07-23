@@ -24,6 +24,24 @@ const rawGames = [
     addedAt: "2026-07-22",
     playable: true,
   },
+  {
+    id: "ai-peoples-court",
+    slug: "ai-peoples-court",
+    name: "AI People’s Court",
+    tagline:
+      "A forthcoming local-AI courtroom game where you will judge endlessly generated fictional disputes.",
+    description: [
+      "You will serve as the judge in fictional disputes generated and performed by a language model running locally through LM Studio. You—not the model—will always decide the verdict.",
+      "The courtroom is currently in Phase 1: its route and place in the Games portal are ready, but case generation and gameplay have not been implemented yet.",
+    ],
+    categoryId: "simulation",
+    kind: "local-ai",
+    tags: ["courtroom", "judge", "simulation", "local ai", "fictional cases"],
+    playTime: "Phase 1 preview",
+    featured: false,
+    addedAt: "2026-07-22",
+    playable: true,
+  },
 ] as const;
 
 export const games: readonly GameMeta[] = rawGames.map((g) =>

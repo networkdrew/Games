@@ -325,14 +325,20 @@ export function applyControlProposal(
   const corrections: string[] = [];
   const nextTurn = state.turn + 1;
 
-  const healthDelta = clampDelta(proposal.healthDelta, scenario.bounds.maxHealthDelta);
+  const healthDelta = clampDelta(
+    proposal.healthDelta,
+    scenario.bounds.maxHealthDelta,
+  );
   if (healthDelta !== Math.round(proposal.healthDelta || 0))
     corrections.push("health_delta clamped");
   const tensionDeltaRaw = clampDelta(
     proposal.tensionDelta,
     scenario.bounds.maxTensionDelta,
   );
-  const trustDeltaRaw = clampDelta(proposal.trustDelta, scenario.bounds.maxTrustDelta);
+  const trustDeltaRaw = clampDelta(
+    proposal.trustDelta,
+    scenario.bounds.maxTrustDelta,
+  );
 
   let health = clamp(state.health + healthDelta, 0, state.maxHealth);
   const tension = clamp(state.tension + tensionDeltaRaw, 0, 100);
@@ -341,7 +347,9 @@ export function applyControlProposal(
 
   let clues = state.clues;
   if (proposal.discoverClue) {
-    const known = scenario.clueAllowlist.some((c) => c.id === proposal.discoverClue);
+    const known = scenario.clueAllowlist.some(
+      (c) => c.id === proposal.discoverClue,
+    );
     if (known) {
       if (!clues.includes(proposal.discoverClue)) {
         clues = [...clues, proposal.discoverClue];
@@ -353,7 +361,9 @@ export function applyControlProposal(
 
   let inventory = state.inventory;
   if (proposal.gainItem) {
-    const known = scenario.itemAllowlist.some((i) => i.id === proposal.gainItem);
+    const known = scenario.itemAllowlist.some(
+      (i) => i.id === proposal.gainItem,
+    );
     if (known) {
       if (!inventory.includes(proposal.gainItem)) {
         inventory = [...inventory, proposal.gainItem];
@@ -371,7 +381,10 @@ export function applyControlProposal(
   }
 
   let snapped = false;
-  if (tension >= TENSION_SNAP_THRESHOLD && state.tension < TENSION_SNAP_THRESHOLD) {
+  if (
+    tension >= TENSION_SNAP_THRESHOLD &&
+    state.tension < TENSION_SNAP_THRESHOLD
+  ) {
     health = clamp(health - TENSION_SNAP_DAMAGE, 0, state.maxHealth);
     snapped = true;
   }
@@ -379,21 +392,29 @@ export function applyControlProposal(
   let status: GameStatus = state.status;
   let ending = state.ending;
 
-  if (proposal.ending === "WIN" && scenario.checkEnding(
-    { ...state, health, tension, trust, stage, clues, inventory },
-    "WIN",
-  )) {
+  if (
+    proposal.ending === "WIN" &&
+    scenario.checkEnding(
+      { ...state, health, tension, trust, stage, clues, inventory },
+      "WIN",
+    )
+  ) {
     status = "won";
     ending = narration;
-  } else if (proposal.ending === "LOSS" && scenario.checkEnding(
-    { ...state, health, tension, trust, stage, clues, inventory },
-    "LOSS",
-  )) {
+  } else if (
+    proposal.ending === "LOSS" &&
+    scenario.checkEnding(
+      { ...state, health, tension, trust, stage, clues, inventory },
+      "LOSS",
+    )
+  ) {
     status = "lost";
     ending = narration;
   } else {
     if (proposal.ending)
-      corrections.push(`${proposal.ending.toLowerCase()} rejected (condition not met)`);
+      corrections.push(
+        `${proposal.ending.toLowerCase()} rejected (condition not met)`,
+      );
     if (health <= 0) {
       status = "lost";
       ending =

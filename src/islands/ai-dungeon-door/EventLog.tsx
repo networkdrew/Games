@@ -34,13 +34,7 @@ function PlayerPrompt({ action }: { action: string }) {
   );
 }
 
-function NarrationBlock({
-  text,
-  offline,
-}: {
-  text: string;
-  offline: boolean;
-}) {
+function NarrationBlock({ text, offline }: { text: string; offline: boolean }) {
   return (
     <p className="text-text mt-1.5 leading-relaxed break-words whitespace-pre-wrap">
       {text}
