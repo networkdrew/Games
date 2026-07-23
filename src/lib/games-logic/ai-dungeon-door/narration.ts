@@ -1,51 +1,18 @@
-import type { Outcome } from "./types";
+import type { LegalOutcome, LegalOutcomeId } from "./types";
 
 /**
- * Everything needed to build the tiny prompt sent to the local model, and to
- * turn its raw text back into something safe to show. The model is asked to
- * do exactly one thing: rewrite an already-decided outcome into one short
- * atmospheric line. It never receives the full transcript, game state, or
- * anything it could use to invent its own outcome — see docs/bridge.md.
+ * Client-side protocol helpers. The bridge (bridge/dungeonPrompt.mjs +
+ * bridge/protocol.mjs) owns building the actual system/user prompt and
+ * does the primary parsing/validation of the model's raw response — it has
+ * to, since it's the one reading the live stream. Everything here is a
+ * defense-in-depth second check the browser applies to whatever the bridge
+ * hands back, and the sanitizers used verbatim for the offline/deterministic
+ * path where there's no model response to parse at all (just an already
+ * authored `LegalOutcome.fallbackNarration`).
  */
 
-export const MAX_NARRATION_TOKENS = 60;
-export const HARD_MAX_NARRATION_TOKENS = 70;
-
-export interface NarrationContext {
-  doorPersonality: string;
-  tension: number;
-  outcome: Outcome;
-}
-
-/**
- * Compact system prompt establishing tone and the exact output contract:
- * one short sentence or two, describing ONLY the given outcome, no
- * formatting, no meta-commentary. Kept intentionally tiny — the whole
- * point is that a ~0.5B model can follow it. Deliberately has no few-shot
- * example: testing against qwen2.5-0.5b-instruct showed it would echo an
- * in-prompt example almost verbatim regardless of the real outcome (see
- * docs/model-selection.md) — dropping the example and using OUTCOME/DOOR
- * PERSONALITY/TENSION labels instead measurably reduced that drift.
- */
-export function buildSystemPrompt(): string {
-  return [
-    "You are the narrator of a dungeon-door text adventure game.",
-    "Each turn you receive an OUTCOME describing something that just happened. Your ONLY job is to describe that exact OUTCOME in 1-2 short, atmospheric sentences, second person, present tense.",
-    "Do not invent new events. Only describe the OUTCOME given below.",
-    "No markdown, no quotation marks, no prefixes.",
-  ].join("\n");
-}
-
-export function buildUserPrompt(ctx: NarrationContext): string {
-  const tensionWord =
-    ctx.tension >= 70 ? "very tense" : ctx.tension >= 35 ? "tense" : "calm";
-  return [
-    `DOOR PERSONALITY: ${ctx.doorPersonality}`,
-    `TENSION: ${tensionWord}`,
-    `OUTCOME: ${ctx.outcome.summary}`,
-    "Write 1-2 sentences describing ONLY this OUTCOME.",
-  ].join("\n");
-}
+export const NARRATION_SOFT_MAX_WORDS = 90;
+export const NARRATION_HARD_MAX_WORDS = 130;
 
 const FORBIDDEN_PATTERNS = [
   /as an ai/i,
@@ -54,54 +21,90 @@ const FORBIDDEN_PATTERNS = [
   /^```/,
   /I cannot/i,
   /I can't help/i,
+  /\blegal outcomes?\b/i,
+  /\bsystem prompt\b/i,
 ];
 
+const HTML_TAG_PATTERN = /<[^>]*>/g;
+
 /**
- * Cleans raw model output: strips code fences/backticks, reasoning tags,
- * role prefixes, surrounding quotes, and collapses whitespace. Returns null
- * if the result is empty, too long, or matches a forbidden pattern — the
- * caller should fall back to `outcome.fallbackNarration` in that case.
+ * Cleans narration text of any source (model or fallback): strips HTML
+ * tags, code fences, role prefixes, wrapping quotes, and enforces a hard
+ * word cap. Returns null if the result is empty or matches a forbidden
+ * meta-commentary pattern — callers should fall back to the outcome's
+ * prewritten `fallbackNarration` in that case.
  */
-export function sanitizeNarration(raw: string): string | null {
+export function sanitizeNarrationText(
+  raw: string | null | undefined,
+): string | null {
+  if (!raw) return null;
   let text = raw.trim();
 
-  // Strip a <think>...</think> reasoning block some models emit even when told not to.
   text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  // Strip a leading role/label prefix like "Narrator:" or "Response:".
   text = text.replace(/^(narrator|response|assistant|ai)\s*:\s*/i, "");
-  // Strip markdown code fence markers (keep the text inside them) and stray backticks.
   text = text.replace(/```/g, "").replace(/`/g, "").trim();
-  // Strip wrapping quotes.
+  text = text.replace(HTML_TAG_PATTERN, "");
   text = text.replace(/^["'“]+|["'”]+$/g, "").trim();
+  // Some models occasionally repeat a stray protocol line (e.g. a second
+  // "MEMORY:"/"OUTCOME:") after the real narration — seen live against
+  // ornith-1.0-9b (see docs/model-selection.md). Truncate at the first one
+  // rather than showing it to the player.
+  text = text.split(/\n\s*(?:OUTCOME|MEMORY|NARRATION)\s*:/i)[0]!.trim();
 
   if (text.length === 0) return null;
   if (FORBIDDEN_PATTERNS.some((p) => p.test(text))) return null;
 
   const words = text.split(/\s+/);
-  if (words.length > HARD_MAX_NARRATION_TOKENS) {
-    text = words.slice(0, HARD_MAX_NARRATION_TOKENS).join(" ");
-    // Avoid ending mid-sentence on a dangling word after truncation.
-    text = text.replace(/[,;:]?\s*$/, "") + "…";
+  if (words.length > NARRATION_HARD_MAX_WORDS) {
+    text =
+      words
+        .slice(0, NARRATION_HARD_MAX_WORDS)
+        .join(" ")
+        .replace(/[,;:]?\s*$/, "") + "…";
   }
-
-  if (text.length > 400) {
-    text = text.slice(0, 400).trimEnd() + "…";
+  if (text.length > 700) {
+    text = text.slice(0, 700).trimEnd() + "…";
   }
-
   return text;
 }
 
-/** The line actually shown to the player: sanitized model output, or the deterministic fallback if narration is missing/invalid. */
-export function resolveNarration(
-  outcome: Outcome,
-  rawModelResponse: string | null,
-): { text: string; aiNarrated: boolean } {
-  if (rawModelResponse === null) {
-    return { text: outcome.fallbackNarration, aiNarrated: false };
+const MAX_MEMORY_FACT_LENGTH = 140;
+
+/**
+ * Sanitizes a single continuity fact before it's added to the rolling
+ * memory (see engine.ts's `pushMemoryFact`). Rejects anything that looks
+ * like an instruction rather than a short factual statement, and caps
+ * length so memory can never grow into a second transcript.
+ */
+export function sanitizeMemoryFact(
+  raw: string | null | undefined,
+): string | null {
+  if (!raw) return null;
+  let text = raw.trim();
+  if (text.length === 0) return null;
+  if (/^none$/i.test(text)) return null;
+
+  text = text.replace(HTML_TAG_PATTERN, "");
+  text = text.replace(/^["'“]+|["'”]+$/g, "").trim();
+
+  if (FORBIDDEN_PATTERNS.some((p) => p.test(text))) return null;
+  // A memory fact should read like a statement, not an imperative directive
+  // aimed at the model itself — reject anything that looks like a
+  // prompt-injection attempt riding along in the "memory" field.
+  if (/^(ignore|disregard|you must|system:|assistant:)/i.test(text))
+    return null;
+
+  if (text.length > MAX_MEMORY_FACT_LENGTH) {
+    text = text.slice(0, MAX_MEMORY_FACT_LENGTH).trimEnd() + "…";
   }
-  const sanitized = sanitizeNarration(rawModelResponse);
-  if (sanitized === null) {
-    return { text: outcome.fallbackNarration, aiNarrated: false };
-  }
-  return { text: sanitized, aiNarrated: true };
+  return text;
+}
+
+/** Confirms an outcome id the bridge claims the model chose is actually in the legal list for this turn — never trust the network layer alone. */
+export function findValidatedOutcome(
+  outcomeId: string | null | undefined,
+  legal: readonly LegalOutcome[],
+): LegalOutcome | null {
+  if (!outcomeId) return null;
+  return legal.find((o) => o.id === (outcomeId as LegalOutcomeId)) ?? null;
 }

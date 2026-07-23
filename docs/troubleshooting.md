@@ -19,13 +19,26 @@ forgot was running). Find and stop it, or set `BRIDGE_PORT` to a different
 port (and update `DEFAULT_BRIDGE_URL` in `src/lib/bridge/client.ts` or pass a
 different URL when constructing `BridgeClient` if you do this permanently).
 
-## Narration is oddly generic or doesn't match what just happened
+## A turn shows the "fallback" badge even though Ornith is connected
 
-Expected, documented behavior of the default 0.5B model — see
-`model-selection.md`. The game state itself (health, tension, turns,
-inventory, win/loss) is never affected by this; only the one-line flavor
-text can drift. If it bothers you, point `BRIDGE_MODEL` at a larger
-already-installed model and accept the extra resource usage.
+This means either no model was loaded for the requested tier, or the
+model's chosen outcome failed validation twice in a row (see
+`docs/bridge.md`'s "how a turn is validated"). Expand the collapsed
+"Diagnostics" panel: if "Last request id" is blank, the request never
+reached the model at all (check the bridge's own console log for a
+validation/rate-limit rejection); if a request id is present with
+`corrected: yes` immediately followed by fallback, the model genuinely
+failed twice — check the bridge log for the exact outcome id it returned.
+The game state itself (health, tension, trust, turns, inventory, win/loss)
+is never affected either way — only which narration/interpretation path
+was used for that one turn.
+
+## The "Tiny Model (experimental)" checkbox mostly shows "fallback"
+
+Expected — `qwen2.5-0.5b-instruct` was found unable to reliably follow the
+`OUTCOME:`/`MEMORY:`/`NARRATION:` protocol during testing (see
+`model-selection.md`'s "the original 0.5B-only version"). It's kept as an
+explicitly-labeled, opt-in comparison, not a normal way to play.
 
 ## CORS error in the browser console calling the bridge
 

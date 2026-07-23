@@ -14,6 +14,7 @@ export default tseslint.config(
       "coverage/**",
       "worker-configuration.d.ts",
       "bridge/**",
+      "scripts/**",
     ],
   },
   js.configs.recommended,

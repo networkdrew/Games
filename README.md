@@ -7,13 +7,17 @@ same Cloudflare deployment pattern, same design-token shape — a different,
 slightly more playful and atmospheric identity, and a games registry instead of
 a tools/apps registry.
 
-The first game is **AI Dungeon Door**: a compact text adventure about a
-mysterious dungeon door, narrated one line at a time by a small language model
+The first game is **AI Dungeon Door**: a genuinely LLM-driven text adventure
+about a mysterious dungeon door, played out live with a capable language model
 running entirely on your own PC through [LM Studio](https://lmstudio.ai) — never
-the cloud. All game logic (health, inventory, win/loss, what your action
-actually does) is decided by a deterministic engine; the model only rewrites an
-already-decided outcome into one atmospheric sentence, and the game is fully
-playable with polished prewritten narration even without LM Studio running.
+the cloud. The model interprets your free-text actions, roleplays the entity
+behind the door, and streams its narration token-by-token — but it can only
+ever choose from a bounded list of outcomes the deterministic engine decides
+are currently legal; it never invents state, health changes, or exits. See
+[docs/architecture.md](docs/architecture.md) for the full hybrid design, and
+[docs/model-selection.md](docs/model-selection.md) for which model and why.
+The game is fully playable with polished prewritten narration even without
+LM Studio running, and clearly says so in the UI.
 
 ## Relationship to Tools and Apps
 
@@ -33,12 +37,13 @@ different Cloudflare deployment. Nothing here modifies either of those.
 ```
 src/
   lib/games/            registry.ts (all games), schema.ts, categories.ts
-  lib/games-logic/ai-dungeon-door/   deterministic engine, scenarios, intent parsing, narration prompt/sanitizer
-  lib/bridge/client.ts   browser-side client for the local bridge (health check, one-request-at-a-time narration)
-  islands/ai-dungeon-door/           the game's React UI (door scene, status bar, event log, action input)
+  lib/games-logic/ai-dungeon-door/   deterministic engine, scenarios (legal outcomes + character prompts), intent parsing, narration sanitizers
+  lib/bridge/client.ts   browser-side client for the local bridge (health check, streaming turn requests, one in-flight at a time)
+  islands/ai-dungeon-door/           the game's React UI (door scene, status bar, streaming event log, diagnostics panel)
   pages/index.astro      the portal homepage (hero, featured game, searchable grid)
   pages/ai-dungeon-door/ the game's own route
-bridge/                  the local Node bridge to LM Studio (NOT part of the deployed site)
+bridge/                  the local Node bridge to LM Studio (NOT part of the deployed site) — see docs/bridge.md
+scripts/verify-live-model.mjs   live (non-mocked) check against a real running bridge + LM Studio
 Start-AIDungeonDoor.ps1  Windows launcher: checks LM Studio, starts the bridge, opens the game
 ```
 
@@ -51,13 +56,17 @@ npm run dev        # http://localhost:4321
 
 ## Playing with local AI
 
-1. Install/open [LM Studio](https://lmstudio.ai) and have a small instruct
-   model available (see [docs/model-selection.md](docs/model-selection.md) —
-   `qwen2.5-0.5b-instruct` is the default).
+1. Install/open [LM Studio](https://lmstudio.ai) and have a capable instruct
+   model loaded (see [docs/model-selection.md](docs/model-selection.md) —
+   `ornith-1.0-9b` is the default; `qwen/qwen3.5-9b` is the fallback).
 2. Start the bridge: `npm run bridge` (or just double-click
    `Start AI Dungeon Door.bat`, which checks everything and starts it for you).
-3. Open the game. The header shows "Local AI connected" once the bridge and a
-   model are both reachable.
+3. Open the game. The header shows "Local AI: Ornith 9B connected" once the
+   bridge and a model are both reachable. An optional "Tiny Model
+   (experimental)" checkbox lets you try `qwen2.5-0.5b-instruct` instead — it
+   is never selected automatically. A collapsed "Diagnostics" panel proves
+   the model is actually being used (exact model id, streaming timing, token
+   counts, whether a turn required a fallback).
 
 The game is always playable without any of this — it falls back to polished
 prewritten narration and says so in the UI.

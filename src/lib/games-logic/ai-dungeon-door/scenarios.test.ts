@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { SCENARIOS, getScenario, pickScenario } from "./scenarios";
-import { applyAction, createNewGame } from "./engine";
+import {
+  applyDeterministicAction,
+  createNewGame,
+  getLegalOutcomes,
+} from "./engine";
 
 describe("scenarios", () => {
   it("has exactly the 8 required scenario templates", () => {
@@ -19,8 +23,10 @@ describe("scenarios", () => {
     );
   });
 
-  it("gives every scenario a starting inventory, intro, and suggestions", () => {
+  it("gives every scenario a character prompt, secret truth, intro, and starting inventory", () => {
     for (const scenario of SCENARIOS) {
+      expect(scenario.doorPersonality.length).toBeGreaterThan(20);
+      expect(scenario.secretTruth.length).toBeGreaterThan(20);
       expect(scenario.intro.length).toBeGreaterThan(0);
       expect(scenario.startingInventory.length).toBeGreaterThan(0);
       expect(scenario.startingSuggestions.length).toBeGreaterThan(0);
@@ -39,12 +45,54 @@ describe("scenarios", () => {
     expect(() => getScenario("not-a-real-scenario")).toThrow();
   });
 
-  it("every scenario has at least one reachable win path from its opening state", () => {
+  it("keeps every legal outcome description within the bridge's request-validation cap", () => {
+    // Mirrors bridge/config.mjs's MAX_OUTCOME_DESCRIPTION_LENGTH — a real
+    // scenario description once exceeded the (then-smaller) cap by a single
+    // character and silently triggered a deterministic-fallback turn. Kept
+    // as a plain literal here (not imported) since the bridge is a
+    // separate, dependency-free JS runtime with no shared build step.
+    const BRIDGE_MAX_OUTCOME_DESCRIPTION_LENGTH = 320;
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      let state = createNewGame(i);
+      // Sample the legal-outcomes list at several points across a run, not
+      // just the opening state, since descriptions vary by progress.
+      const actionsToTry = [
+        "listen",
+        "look under",
+        "search wall",
+        "ask",
+        "offer",
+        "use key",
+      ];
+      for (const action of actionsToTry) {
+        if (state.status !== "playing") break;
+        for (const outcome of getLegalOutcomes(state)) {
+          expect(
+            outcome.description.length,
+            `${state.scenarioId}'s "${outcome.id}" description is too long for the bridge`,
+          ).toBeLessThanOrEqual(BRIDGE_MAX_OUTCOME_DESCRIPTION_LENGTH);
+        }
+        state = applyDeterministicAction(state, action).state;
+      }
+    }
+  });
+
+  it("never offers a duplicate outcome id in the same legal-outcomes list", () => {
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      const state = createNewGame(i);
+      const legal = getLegalOutcomes(state);
+      const ids = legal.map((o) => o.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it("every scenario has at least one reachable win path from its opening state (deterministic chooser)", () => {
     // A small scripted playthrough per scenario proves a real win path
-    // exists — not just that resolve() can technically return kind: "win".
+    // exists via the deterministic chooser — not just that some outcome
+    // object happens to have isWin: true somewhere in the code.
     const scripts: Record<string, string[]> = {
       "sleeping-creature": ["listen at the door", "use the rusty key"],
-      "trapped-adventurer": ["ask who is inside", "use the rusty key"],
+      "trapped-adventurer": ["offer the waterskin", "use the rusty key"],
       mimic: ["search the surrounding wall", "use the rusty key"],
       "cursed-vault": ["offer the silver coin", "use the rusty key"],
       "guard-password": [
@@ -65,11 +113,26 @@ describe("scenarios", () => {
       let state = createNewGame(seedIndex);
       for (const line of script!) {
         if (state.status !== "playing") break;
-        state = applyAction(state, line).state;
+        state = applyDeterministicAction(state, line).state;
       }
       expect(state.status, `${scenario.id} did not win via its script`).toBe(
         "won",
       );
+    }
+  });
+
+  it("every scenario is losable by repeated forceful actions or a timeout", () => {
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      let state = createNewGame(i);
+      const scenario = SCENARIOS[i]!;
+      for (
+        let turn = 0;
+        turn < scenario.maxTurns + 2 && state.status === "playing";
+        turn++
+      ) {
+        state = applyDeterministicAction(state, "kick the door").state;
+      }
+      expect(state.status, `${scenario.id} never ended`).not.toBe("playing");
     }
   });
 });

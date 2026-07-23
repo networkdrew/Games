@@ -43,7 +43,7 @@ export default function StatusBar({ state }: StatusBarProps) {
         : "bg-success";
 
   return (
-    <div className="border-border bg-bg-elevated/80 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border p-3 text-sm sm:grid-cols-4">
+    <div className="border-border bg-bg-elevated/80 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border p-3 text-sm sm:grid-cols-5">
       <div>
         <div className="text-text-muted mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
           <Icon name="heart" className="h-3.5 w-3.5" />
@@ -73,6 +73,22 @@ export default function StatusBar({ state }: StatusBarProps) {
         />
         <span className="text-text-muted mt-1 block text-xs">
           {state.tension} / 100
+        </span>
+      </div>
+
+      <div>
+        <div className="text-text-muted mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
+          <Icon name="drama" className="h-3.5 w-3.5" />
+          Trust
+        </div>
+        <Meter
+          value={state.trust}
+          max={100}
+          colorClass="bg-accent"
+          label={`Trust: ${state.trust} of 100`}
+        />
+        <span className="text-text-muted mt-1 block text-xs">
+          {state.trust} / 100
         </span>
       </div>
 

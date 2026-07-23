@@ -1,96 +1,134 @@
 # Model selection
 
-## Result: `qwen2.5-0.5b-instruct`
+## Result
 
-Detected by querying LM Studio's own `GET /v1/models` at
-`http://127.0.0.1:1234/v1/models` — never assumed. On this machine it
-returned (among others) `qwen2.5-0.5b-instruct` and `smollm2-360m-instruct`
-as the two smallest installed instruct models; `bridge/config.mjs`'s
-`PREFERRED_MODEL_IDS` tries them in that order and uses whichever LM Studio
-actually reports, falling back to the first available model if neither is
-present.
+**Primary (default) model: `ornith-1.0-9b`** — the exact identifier LM Studio
+reports via `GET /v1/models` (queried live, never assumed). Confirmed on this
+machine alongside the 35B variant (`deepreinforce-ai_ornith-1.0-35b@...`,
+not used) and `qwen/qwen3.5-9b` (configured as the next fallback).
 
-## Why 0.5B and not something bigger
+**Priority order** (`bridge/config.mjs`'s `PRIMARY_MODEL_PRIORITY`), first
+one LM Studio actually reports wins:
 
-The task instructions are explicit: prefer the smallest model that's good
-enough, and don't reach for a 7-9B model just because its prose is nicer —
-resource impact matters more than writing quality here, and the model's job
-is narrow (rewrite an already-decided outcome into one sentence), not
-open-ended writing.
+1. `ornith-1.0-9b`
+2. `qwen/qwen3.5-9b`
+3. `granite-4.1-8b`, `google/gemma-4-e4b` — untested placeholders for
+   "another capable installed 7B-10B instruct model"; reorder or replace
+   once you've verified one works well here, and update this document with
+   real evidence when you do.
+4. Deterministic engine (no model) — the final, always-available fallback.
 
-## What was actually tested
+**Tiny/low-power tier** (`TINY_MODEL_PRIORITY`): `qwen2.5-0.5b-instruct`,
+then `smollm2-360m-instruct`. Never selected automatically for normal play —
+only reachable via the explicit "Tiny Model (experimental)" checkbox in the
+game UI, which is unchecked by default.
 
-Six representative outcomes (one per scenario family: a quiet clue, a
-punished mistake, a win via password, a paid-and-betrayed trade, a
-time-pressure win, a mimic's warning sign) were sent through the real bridge
-to `qwen2.5-0.5b-instruct`, twice — once with a naive few-shot prompt, once
-with the current prompt (`buildSystemPrompt()` in `narration.ts`).
+## Why ornith-1.0-9b
 
-**First attempt (with a worked example in the system prompt):** the model
-would frequently echo the example's content almost verbatim regardless of
-the real outcome — e.g. asked to narrate a guard accepting a password, it
-still produced breathing/sleeping imagery lifted straight from the example.
-Length and formatting were fine; content fidelity was not.
+This is now a genuinely LLM-driven game: the model interprets free-text
+actions, roleplays a character, and picks from a set of legally-possible
+outcomes, then narrates the result. That requires real instruction-following
+and creative writing ability a 0.5B model does not have (see "the original
+0.5B-only version" below) — a capable ~9B model, already installed and
+previously benchmarked by the project owner at 80+ tokens/sec on an RTX
+3080, is the smallest model on this machine that was actually confirmed to
+do this well.
 
-**After removing the example** (current prompt: `OUTCOME:` /
-`DOOR PERSONALITY:` / `TENSION:` labels, no worked example) drift measurably
-decreased but did not disappear — the model sometimes still substitutes
-generic dungeon imagery instead of the specific outcome given. One concrete
-example captured during a real playthrough (see the completion report for
-the full transcript): asked to narrate "the player unlocks the door with the
-key, having deduced it was never locked, and wins," it responded "You press
-your ear to the cold wood. Slow, heavy breaths answer..." — atmospheric,
-correctly short, but unrelated to the actual event.
+## A critical finding: reasoning mode must be explicitly disabled
 
-**Latency**: ~150-300ms per call once the model is warm; ~2.7s on the very
-first call after the bridge starts (model load/warmup inside LM Studio).
-Well within the "one inference request per action" budget.
+`ornith-1.0-9b` is a **reasoning model** — by default it emits a hidden
+chain-of-thought via a separate `reasoning_content` field before (or
+instead of) real `content`. Discovered live: a simple "say hello" prompt
+returned `content: ""` with 282 of 293 completion tokens spent on invisible
+reasoning. Left unfixed, this would silently exhaust `MAX_TOKENS` on
+reasoning and never produce narration.
 
-**Format compliance**: consistently short (1-2 sentences), no markdown, no
-`<think>` blocks, no refusals, no broken-character "as an AI" responses in
-any of the ~10 test calls made.
+**Fix** (`bridge/config.mjs`'s `REASONING_DISABLE_PARAMS`, sent on every
+request): both of these are required together — dropping either one and
+reasoning came back in live testing:
 
-**`smollm2-360m-instruct`** (smaller still) was also spot-checked and was
-worse on every axis that matters here: it broke character ("I'm glad you
-made it through that tricky part!"), ran well past the sentence limit on one
-response, and drifted further from the given outcome than the 0.5B model.
-It was not considered further.
+```js
+{
+  chat_template_kwargs: { enable_thinking: false },
+  reasoning_effort: "none",
+}
+```
 
-## Why 0.5B ships as the default despite the drift
+With both set, `reasoning_tokens` dropped to 0 and normal `content`
+streamed immediately. If you point the bridge at a different model, retest
+this — some models don't need it (harmless extra params), some need a
+different mechanism entirely.
 
-This game's architecture is specifically designed so that per-turn flavor
-text quality is cosmetic, not load-bearing:
+## What was actually tested live (not mocked)
 
-- All state that actually matters — health, tension, turns, inventory,
-  clues, win/loss — is decided by `engine.ts`/`scenarios.ts` before the
-  model is ever called, and is always displayed accurately in the status
-  bar regardless of what the model says.
-- Every outcome carries a prewritten `fallbackNarration`; `sanitizeNarration`
-  rejects malformed/refusal/reasoning-leak output, but does **not** and
-  cannot verify factual fidelity to the outcome (that would require a much
-  larger judge model, defeating the point). Occasional content drift from
-  qwen2.5-0.5b-instruct is a known, accepted cosmetic limitation, not a
-  gameplay bug — confirmed directly in this session: a real playthrough won
-  correctly with a completely deterministic ending banner even when that
-  turn's AI narration was off-topic (see the completion report).
-- The deterministic ending text (win/loss banner) is never sent through the
-  model at all — it's always the authored, accurate text.
+Every claim below came from real requests through `bridge/server.mjs` to a
+running LM Studio instance serving `ornith-1.0-9b` — see
+`scripts/verify-live-model.mjs` and the completion report for full
+transcripts. Highlights:
 
-If richer, more topical narration matters more to you than minimal resource
-usage, `BRIDGE_MODEL=<id>` (or editing `PREFERRED_MODEL_IDS` in
-`bridge/config.mjs`) lets you point the bridge at a larger already-installed
-model (e.g. `gemma-4-e4b` or `qwen/qwen3.5-9b` were seen in this machine's
-model list) — but that trade-off should be a deliberate choice, not the
-default, per the project's stated priorities. This document should be
-updated with fresh test evidence if the default is ever changed.
+- **Creative, unscripted actions**: complimenting a mimic door, asking a
+  guard "who's hurt in there" — correctly interpreted and mapped to a
+  sensible legal outcome every time, with vivid, in-character prose (e.g. a
+  mimic's dialogue actually _sounding_ like a mimic, "you have an eye for
+  craftsmanship... let me show you how I was made").
+- **Genuine continuity across turns**: told a guard "I'm the royal
+  locksmith," then next turn said "actually I'm a merchant" — the model
+  caught its own earlier claim and had the guard call out the contradiction
+  ("You claimed to be royal business earlier. Now you're lost?"), choosing
+  `ENTITY_ANGER_INCREASES` appropriately. This is real use of the
+  `memoryFacts`/`recentExchanges` context, not keyword matching.
+- **Impossible actions handled gracefully**: "I sprout wings and fly over
+  the door" correctly resolved to `NO_EFFECT` with dismissive, in-character
+  narration, rather than the model inventing a new outcome.
+- **A full multi-turn win**: the Password Guard scenario was won only after
+  7 turns of real negotiation — the model refused the correct password twice
+  when the player was cocky/demanding, and only granted `OPEN_DOOR` once the
+  player calmly explained _how_ they legitimately learned it. This is more
+  interesting (and harder) than the deterministic engine's minimum 2-action
+  solution, which is exactly the point.
+- **Real streaming**: 55-160 distinct delta chunks per turn observed, first
+  token in 170-930ms, total turn latency 900ms-2.7s.
+
+## Two real bugs this live testing caught (not found by mocked tests)
+
+1. **`MAX_EXCHANGE_FIELD_LENGTH` too small** (400 chars): a normal ~100-word
+   Ornith response (600+ chars) sent back as `recentExchanges` context on
+   the next turn was silently rejected by request validation, causing an
+   unnecessary deterministic-fallback turn with no visible error. Fixed by
+   raising the cap to 900 (headroom above narration's own ~700-char
+   sanitizer cap) — see `bridge/config.mjs`.
+2. **A scenario's outcome description was 221 characters** against a
+   220-character cap — one over, same silent-rejection symptom. Fixed by
+   raising `MAX_OUTCOME_DESCRIPTION_LENGTH` to 320 with real headroom, and
+   added `scenarios.test.ts`'s "keeps every legal outcome description within
+   the bridge's request-validation cap" test so this class of bug can't
+   silently reappear.
+
+Both are exactly the kind of thing mocked bridge tests cannot catch — they
+only surfaced by actually running real player actions through the real
+model and reading the resulting (initially wrong) behavior.
+
+## The original 0.5B-only version (kept as evidence, not the current design)
+
+Earlier in this project, `qwen2.5-0.5b-instruct` was the only model tested,
+used purely to cosmetically rewrite a fully deterministic outcome. That
+version worked (fast, well-formatted) but the model made zero meaningful
+decisions — it echoed a few-shot example almost verbatim regardless of the
+actual outcome, and never interpreted the player's action. That is no
+longer how this game works; it's preserved here only as the reason a 0.5B
+model is unsuitable as the _default_, and remains available as the opt-in,
+clearly-labeled "Tiny Model (experimental)" tier for anyone who wants to see
+the difference or run with near-zero resource usage.
 
 ## Changing the model safely
 
 1. Confirm LM Studio actually reports the model: `lms ls` or
    `GET http://127.0.0.1:1234/v1/models`.
-2. Set `BRIDGE_MODEL=<exact id from that list>` before starting the bridge
-   (or edit `PREFERRED_MODEL_IDS` in `bridge/config.mjs` for a permanent
-   change), never a guessed identifier.
-3. Re-run the same kind of spot-check as above (a handful of real outcomes
-   through `/narrate`) before trusting it — length, character, and
-   topicality can all vary a lot between models.
+2. Set `BRIDGE_MODEL=<exact id>` (primary tier) or `BRIDGE_TINY_MODEL=<exact id>`
+   before starting the bridge, or edit the priority arrays in
+   `bridge/config.mjs` for a permanent change — never a guessed identifier.
+3. Retest reasoning-mode behavior (see above) — a different model may need
+   different (or no) disable parameters.
+4. Play a handful of real turns across a few scenarios and update this
+   document with what you actually observed, the same way this document
+   was written.

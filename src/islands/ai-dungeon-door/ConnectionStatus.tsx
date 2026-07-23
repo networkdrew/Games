@@ -1,32 +1,46 @@
-import type { BridgeStatus } from "@/lib/bridge/client";
+import type { BridgeStatus, ModelTier } from "@/lib/bridge/client";
 import Icon from "@/components/react/Icon";
 import { iconButton } from "@/components/react/styles";
+import { friendlyModelName } from "./modelNames";
 
 interface ConnectionStatusProps {
   status: BridgeStatus;
-  modelId?: string;
+  primaryModelId?: string;
+  tinyModelId?: string;
+  activeTier: ModelTier | "deterministic";
+  generating: boolean;
   onReconnect: () => void;
 }
 
-const LABELS: Record<BridgeStatus, string> = {
-  unknown: "Checking local AI…",
-  checking: "Connecting to local AI…",
-  connected: "Local AI connected",
-  unavailable: "Local AI unavailable — deterministic story mode",
-};
+function computeLabel(props: ConnectionStatusProps): string {
+  const { status, primaryModelId, tinyModelId, activeTier, generating } = props;
+  if (generating) return "Generating locally…";
+  if (status === "unknown" || status === "checking")
+    return "Checking local AI…";
+  if (status === "unavailable")
+    return "Local AI unavailable — Offline fallback mode";
 
-export default function ConnectionStatus({
-  status,
-  modelId,
-  onReconnect,
-}: ConnectionStatusProps) {
-  const label = LABELS[status];
-  const dotClass =
-    status === "connected"
-      ? "bg-success"
-      : status === "unavailable"
-        ? "bg-danger"
-        : "bg-text-muted animate-pulse";
+  if (activeTier === "primary" && primaryModelId) {
+    return `Local AI: ${friendlyModelName(primaryModelId)} connected`;
+  }
+  if (activeTier === "tiny" && tinyModelId) {
+    return `Local AI: ${friendlyModelName(tinyModelId)} connected (experimental)`;
+  }
+  if (!primaryModelId && !tinyModelId)
+    return "Local AI unavailable — Offline fallback mode";
+  return "Offline fallback mode";
+}
+
+export default function ConnectionStatus(props: ConnectionStatusProps) {
+  const { status, onReconnect } = props;
+  const label = computeLabel(props);
+  const dotClass = props.generating
+    ? "bg-accent animate-pulse"
+    : status === "unavailable"
+      ? "bg-danger"
+      : props.activeTier !== "deterministic"
+        ? "bg-success"
+        : "bg-text-muted";
 
   return (
     <div
@@ -38,10 +52,7 @@ export default function ConnectionStatus({
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`}
         aria-hidden="true"
       />
-      <span className="hidden sm:inline">
-        {label}
-        {status === "connected" && modelId ? ` (${modelId})` : ""}
-      </span>
+      <span className="hidden sm:inline">{label}</span>
       {status === "unavailable" && (
         <button
           type="button"
