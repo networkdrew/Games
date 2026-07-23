@@ -1,7 +1,7 @@
 ---
 import GameLayout from "@/layouts/GameLayout.astro";
 import { getGameById } from "@/lib/games/registry";
-import AIPeoplesCourtGame from "@/islands/ai-peoples-court/AIPeoplesCourtGame";
+import AIPeoplesCourtGame from "@/games/ai-peoples-court/AIPeoplesCourtGame";
 
 const game = getGameById("ai-peoples-court");
 if (!game)

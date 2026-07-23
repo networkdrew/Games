@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { EventEntry } from "@/lib/games-logic/ai-dungeon-door/types";
+import type { EventEntry } from "../logic/types";
 
 interface EventLogProps {
   history: EventEntry[];

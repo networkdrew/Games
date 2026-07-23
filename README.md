@@ -41,18 +41,26 @@ different Cloudflare deployment. Nothing here modifies either of those.
 
 ```
 src/
+  games/
+    ai-dungeon-door/       complete game feature: React entry, UI components, connection lifecycle, deterministic logic, and colocated tests
+    ai-peoples-court/      complete game feature: React entry and colocated tests (Phase 1 scaffold)
   lib/games/            registry.ts (all games), schema.ts, categories.ts
-  lib/games-logic/ai-dungeon-door/   engine (free-form control-proposal path + deterministic offline path), scenarios, intent parsing, narration sanitizers
   lib/bridge/client.ts   browser-side client for the local bridge (health/ensure/release, streaming turn+opening requests, one in-flight at a time)
-  islands/ai-dungeon-door/           the game's React UI (chat transcript, composer, connection state machine, diagnostics panel)
+  islands/GameGrid.tsx   portal-only searchable/filterable game grid
   components/react/GameAppShell.tsx  reusable standalone-app title bar + loading-screen shell for any local-AI game
   pages/index.astro      the portal homepage (hero, featured game, searchable grid)
-  pages/ai-dungeon-door/ the game's own route (chromeless, full-viewport — never the portal chrome)
+  pages/ai-dungeon-door/ thin route adapter (chromeless, full-viewport — never the portal chrome)
+  pages/ai-peoples-court/ thin route adapter for the second game
 bridge/                  the local Node bridge to LM Studio (NOT part of the deployed site) — see docs/bridge.md
 scripts/verify-live-model.mjs        live (non-mocked) check against a real running bridge + LM Studio
 scripts/evaluate-dungeon-models.mjs  reusable model-evaluation harness — see docs/dungeon-chat-model-selection.md
 Start-AIDungeonDoor.ps1  Windows launcher: checks LM Studio, starts the bridge, opens the game (the bridge itself loads the model on first connect)
 ```
+
+Every game owns one folder under `src/games/<game-id>/`. Astro route adapters
+must remain under `src/pages/` because Astro uses that directory to generate
+URLs. Portal infrastructure, the validated registry, shared game shell, and
+the single local bridge stay outside individual game folders intentionally.
 
 ## Running locally
 

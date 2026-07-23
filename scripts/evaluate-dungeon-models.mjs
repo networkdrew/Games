@@ -155,7 +155,7 @@ function reasoningDisableParamsFor(id) {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture scenarios — hand-duplicated from src/lib/games-logic/ai-dungeon-door
+// Fixture scenarios — hand-duplicated from src/games/ai-dungeon-door/logic
 // /scenarios.ts (the bridge is a dependency-free JS runtime with no
 // TypeScript build step, so this repo already duplicates scenario/protocol
 // logic between the two runtimes on purpose — see bridge/protocol.mjs's own

@@ -1,7 +1,7 @@
 ---
 import GameLayout from "@/layouts/GameLayout.astro";
 import { getGameById } from "@/lib/games/registry";
-import AIDungeonDoorGame from "@/islands/ai-dungeon-door/AIDungeonDoorGame";
+import AIDungeonDoorGame from "@/games/ai-dungeon-door/AIDungeonDoorGame";
 
 const game = getGameById("ai-dungeon-door");
 if (!game)

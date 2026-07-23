@@ -8,27 +8,26 @@ import {
   isInventoryCheck,
   markOpeningDelivered,
   pushMemoryFact,
-} from "@/lib/games-logic/ai-dungeon-door/engine";
-import { getScenario } from "@/lib/games-logic/ai-dungeon-door/scenarios";
-import {
-  sanitizeMemoryFact,
-  sanitizeNarrationText,
-} from "@/lib/games-logic/ai-dungeon-door/narration";
-import type { GameState } from "@/lib/games-logic/ai-dungeon-door/types";
+} from "./logic/engine";
+import { getScenario } from "./logic/scenarios";
+import { sanitizeMemoryFact, sanitizeNarrationText } from "./logic/narration";
+import type { GameState } from "./logic/types";
 import { BridgeClient, type TurnEvent } from "@/lib/bridge/client";
 import { buttonSecondary } from "@/components/react/styles";
 import Icon from "@/components/react/Icon";
 import GameAppShell from "@/components/react/GameAppShell";
-import DoorScene from "./DoorScene";
-import StatusBar from "./StatusBar";
-import EventLog from "./EventLog";
-import ActionInput from "./ActionInput";
-import ConnectionStatus from "./ConnectionStatus";
-import DiagnosticsPanel, { type DiagnosticsData } from "./DiagnosticsPanel";
+import DoorScene from "./components/DoorScene";
+import StatusBar from "./components/StatusBar";
+import EventLog from "./components/EventLog";
+import ActionInput from "./components/ActionInput";
+import ConnectionStatus from "./components/ConnectionStatus";
+import DiagnosticsPanel, {
+  type DiagnosticsData,
+} from "./components/DiagnosticsPanel";
 import {
   useBridgeConnection,
   type ConnectionState,
-} from "./useBridgeConnection";
+} from "./components/useBridgeConnection";
 
 /** Rough chars-per-token heuristic for the diagnostics panel's "approx tokens" display — the bridge's streamed responses don't reliably report usage, so this is clearly labeled as approximate, never exact. */
 function approxTokens(text: string): number {

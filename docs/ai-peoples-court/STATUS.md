@@ -31,7 +31,7 @@ Recorded pre-existing failures:
 - `src/lib/bridge/client.test.ts` expects an older health shape and
   outcome/memory wire protocol than `src/lib/bridge/client.ts` currently
   exposes.
-- `src/lib/games-logic/ai-dungeon-door/scenarios.test.ts` expects removed
+- `src/games/ai-dungeon-door/logic/scenarios.test.ts` expects removed
   `startingSuggestions`.
 - All 10 `AIDungeonDoorGame.test.tsx` tests error because jsdom has no
   `window.matchMedia` stub for `EventLog.tsx`.
@@ -72,8 +72,8 @@ Added:
 - `docs/ai-peoples-court/ARCHITECTURE.md`
 - `docs/ai-peoples-court/STATUS.md`
 - `src/pages/ai-peoples-court/index.astro`
-- `src/islands/ai-peoples-court/AIPeoplesCourtGame.tsx`
-- `src/islands/ai-peoples-court/AIPeoplesCourtGame.test.tsx`
+- `src/games/ai-peoples-court/AIPeoplesCourtGame.tsx`
+- `src/games/ai-peoples-court/AIPeoplesCourtGame.test.tsx`
 
 Updated:
 

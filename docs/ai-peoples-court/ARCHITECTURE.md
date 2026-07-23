@@ -51,11 +51,12 @@ apps:
 1. Add or reuse a broad category in `src/lib/games/categories.ts`.
 2. Add validated discovery metadata to the authoritative registry at
    `src/lib/games/registry.ts`.
-3. Add a React island under `src/islands/<game-id>/`.
+3. Add the game's React entry, game-only components, pure logic, and colocated
+   tests under `src/games/<game-id>/`.
 4. Add `src/pages/<slug>/index.astro`, look up the registry entry, wrap the
    island in `GameLayout`, and mount it with `client:only="react"`.
-5. Keep pure game rules under `src/lib/games-logic/<game-id>/` when gameplay
-   is implemented.
+5. Keep pure game rules under the game's `logic/` subfolder when gameplay is
+   implemented.
 6. Extend the existing local bridge only when a bounded, game-specific
    contract is required. Do not start another bridge or expose a generic
    completion endpoint.
@@ -71,7 +72,7 @@ The canonical internal guide is `docs/adding-a-game.md`.
 - Direct route: `/ai-dungeon-door/`
 - Astro page: `src/pages/ai-dungeon-door/index.astro`
 - React entry component:
-  `src/islands/ai-dungeon-door/AIDungeonDoorGame.tsx`
+  `src/games/ai-dungeon-door/AIDungeonDoorGame.tsx`
 - Chromeless Astro shell: `src/layouts/GameLayout.astro` ->
   `src/layouts/BaseLayout.astro` with `shell`
 - Shared React game shell: `src/components/react/GameAppShell.tsx`
@@ -84,11 +85,11 @@ structured data, and mounts `AIDungeonDoorGame` with `client:only="react"`.
 `AIDungeonDoorGame.tsx` owns the run in React state. Pure, framework-free
 rules live in:
 
-- `src/lib/games-logic/ai-dungeon-door/types.ts`
-- `src/lib/games-logic/ai-dungeon-door/scenarios.ts`
-- `src/lib/games-logic/ai-dungeon-door/intent.ts`
-- `src/lib/games-logic/ai-dungeon-door/engine.ts`
-- `src/lib/games-logic/ai-dungeon-door/narration.ts`
+- `src/games/ai-dungeon-door/logic/types.ts`
+- `src/games/ai-dungeon-door/logic/scenarios.ts`
+- `src/games/ai-dungeon-door/logic/intent.ts`
+- `src/games/ai-dungeon-door/logic/engine.ts`
+- `src/games/ai-dungeon-door/logic/narration.ts`
 
 The deterministic engine owns scenario truth, state transitions, bounds,
 inventory, clues, endings, and final acceptance of model proposals. The model
@@ -96,7 +97,7 @@ can propose a bounded control block and narration; the browser engine remains
 authoritative.
 
 Connection lifecycle state is isolated in
-`src/islands/ai-dungeon-door/useBridgeConnection.ts`: `connecting`,
+`src/games/ai-dungeon-door/components/useBridgeConnection.ts`: `connecting`,
 `loading-model`, `warming`, `ready`, `reconnecting`, `offline`, and `failed`.
 It uses bounded exponential retries and a manual retry path. If the bridge or
 configured model is unavailable, the game supplies deterministic narration
@@ -115,7 +116,7 @@ an existing game-save abstraction exists.
 - Bridge process entry point: `bridge/server.mjs`
 - Browser client: `src/lib/bridge/client.ts`
 - Browser connection state hook:
-  `src/islands/ai-dungeon-door/useBridgeConnection.ts`
+  `src/games/ai-dungeon-door/components/useBridgeConnection.ts`
 - Fixed bridge protocol and validation: `bridge/protocol.mjs`
 - Local transport and LM Studio model lifecycle: `bridge/lmstudio.mjs`
 - Model aliases and tuned per-model settings: `bridge/models.mjs`
@@ -221,8 +222,8 @@ Phase 1.
 Added:
 
 - `src/pages/ai-peoples-court/index.astro`
-- `src/islands/ai-peoples-court/AIPeoplesCourtGame.tsx`
-- `src/islands/ai-peoples-court/AIPeoplesCourtGame.test.tsx`
+- `src/games/ai-peoples-court/AIPeoplesCourtGame.tsx`
+- `src/games/ai-peoples-court/AIPeoplesCourtGame.test.tsx`
 - `docs/ai-peoples-court/ARCHITECTURE.md`
 - `docs/ai-peoples-court/STATUS.md`
 

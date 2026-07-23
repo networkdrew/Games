@@ -8,9 +8,11 @@
    `description` paragraphs, `categoryId`, `kind` (`"local-ai"` if it talks to
    the bridge, `"browser"` if it needs no model at all), `tags`, `playTime`,
    `featured`, `addedAt` (drives the "New" badge for 30 days).
-3. **Build the game's logic** under `src/lib/games-logic/<game-id>/` as pure,
-   framework-free TypeScript with colocated `*.test.ts` files — no React, no
-   DOM. If it's a `local-ai` game, follow AI Dungeon Door's pattern: the
+3. **Create one feature folder** at `src/games/<game-id>/`. Keep the React
+   entry at the folder root, game-only UI in `components/`, pure framework-free
+   rules in `logic/`, and `*.test.ts`/`*.test.tsx` beside the code they protect.
+   Logic must not depend on React or the DOM. If it's a `local-ai` game, follow
+   AI Dungeon Door's pattern: the
    model may interpret free text and propose a small, _bounded_ state change
    (numeric deltas within scenario-defined limits, ids from scenario-defined
    allowlists) — but your own engine code is always the one that clamps,
@@ -19,8 +21,8 @@
    paths" section. Do not let a model mutate state directly, and do not
    build a game that requires one to be fully playable — always keep an
    equivalent deterministic/offline path.
-4. **Build the UI** under `src/islands/<game-id>/` (React) and a page at
-   `src/pages/<slug>/index.astro` using `GameLayout.astro`, following
+4. **Add a thin route adapter** at `src/pages/<slug>/index.astro` using
+   `GameLayout.astro`, following
    `src/pages/ai-dungeon-door/index.astro` as the template. Reuse
    `src/components/react/GameAppShell.tsx` for the title bar/loading-screen
    structure — it provides layout only, not visual identity, so your game
@@ -33,8 +35,9 @@
    allowlists, and add their own alias to `bridge/models.mjs` rather than
    hardcoding a model id anywhere else.
 6. **Test it**: logic tests for every state transition and win/loss path
-   (see `engine.test.ts`/`scenarios.test.ts` for the shape), a component test
-   for the island (see `AIDungeonDoorGame.test.tsx`), and a
+   (see `src/games/ai-dungeon-door/logic/engine.test.ts` and
+   `scenarios.test.ts` for the shape), a component test for the game entry
+   (see `src/games/ai-dungeon-door/AIDungeonDoorGame.test.tsx`), and a
    `registry.test.ts` update if you added a new category.
 7. **Run `npm run verify`** before calling it done.
 

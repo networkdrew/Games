@@ -1,5 +1,5 @@
 import Icon from "@/components/react/Icon";
-import type { GameState } from "@/lib/games-logic/ai-dungeon-door/types";
+import type { GameState } from "../logic/types";
 
 interface StatusBarProps {
   state: GameState;

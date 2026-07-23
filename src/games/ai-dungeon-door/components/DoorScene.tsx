@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GameStatus } from "@/lib/games-logic/ai-dungeon-door/types";
+import type { GameStatus } from "../logic/types";
 
 interface DoorSceneProps {
   tension: number;

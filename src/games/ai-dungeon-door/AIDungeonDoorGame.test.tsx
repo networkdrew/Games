@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AIDungeonDoorGame from "./AIDungeonDoorGame";
-import { getScenario } from "@/lib/games-logic/ai-dungeon-door/scenarios";
+import { getScenario } from "./logic/scenarios";
 import type { TurnEvent } from "@/lib/bridge/client";
 
 function ndjsonBody(events: TurnEvent[]): ReadableStream<Uint8Array> {
