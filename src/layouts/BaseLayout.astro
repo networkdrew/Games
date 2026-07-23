@@ -1,0 +1,92 @@
+---
+import "@/styles/global.css";
+import { SITE_NAME } from "@/lib/config/site";
+import { themeInitScript } from "@/lib/config/theme";
+import Header from "@/components/astro/Header.astro";
+import Footer from "@/components/astro/Footer.astro";
+import SkipLink from "@/components/astro/SkipLink.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Pathname of the current page, e.g. "/ai-dungeon-door/". Used to build the canonical URL. */
+  path: string;
+  /** Arbitrary JSON-LD object(s) to embed for this page. */
+  structuredData?: Record<string, unknown> | Record<string, unknown>[];
+  /**
+   * Chromeless, viewport-filling mode for the game workspace page: no site
+   * Header/Footer, body pinned to the viewport height instead of scrolling
+   * as a normal document. The page's own content (the game shell) owns all
+   * layout and scrolling from there.
+   */
+  shell?: boolean;
+}
+
+const { title, description, path, structuredData, shell = false } = Astro.props;
+
+const canonicalUrl = new URL(path, Astro.site).toString();
+const pageTitle = title === SITE_NAME ? title : `${title} — ${SITE_NAME}`;
+const jsonLdBlocks = structuredData
+  ? Array.isArray(structuredData)
+    ? structuredData
+    : [structuredData]
+  : [];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="theme-color"
+      content="#f6f4f8"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#0d0b14"
+      media="(prefers-color-scheme: dark)"
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+
+    {
+      jsonLdBlocks.map((block) => (
+        <script
+          type="application/ld+json"
+          is:inline
+          set:html={JSON.stringify(block)}
+        />
+      ))
+    }
+
+    <script is:inline set:html={themeInitScript} />
+  </head>
+  <body
+    class={shell
+      ? "bg-bg text-text h-svh overflow-hidden"
+      : "bg-bg text-text flex min-h-svh flex-col"}
+  >
+    <SkipLink />
+    {!shell && <Header />}
+    <main id="main-content" class={shell ? "h-full" : "flex-1"}>
+      <slot />
+    </main>
+    {!shell && <Footer />}
+  </body>
+</html>

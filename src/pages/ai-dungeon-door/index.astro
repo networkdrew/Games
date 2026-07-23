@@ -1,0 +1,21 @@
+---
+import GameLayout from "@/layouts/GameLayout.astro";
+import { getGameById } from "@/lib/games/registry";
+import AIDungeonDoorGame from "@/islands/ai-dungeon-door/AIDungeonDoorGame";
+
+const game = getGameById("ai-dungeon-door");
+if (!game)
+  throw new Error("ai-dungeon-door is missing from the games registry");
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "Game",
+  name: game.name,
+  description: game.tagline,
+  genre: "Text Adventure",
+};
+---
+
+<GameLayout game={game} structuredData={structuredData}>
+  <AIDungeonDoorGame client:only="react" />
+</GameLayout>

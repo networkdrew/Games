@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "compatibility_date": "2026-07-21",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "name": "opengames",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "assets": {
+    // Astro splits adapter builds into dist/client (static assets) and
+    // dist/server (worker entry) — this must point at the client half.
+    // Pointing this at plain "./dist" builds fine but serves nothing; see
+    // docs/deployment.md (mirrors a real OpenToolbox incident).
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+  },
+  "observability": {
+    "enabled": true,
+  },
+}

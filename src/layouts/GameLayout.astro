@@ -1,0 +1,21 @@
+---
+import type { GameMeta } from "@/lib/games/schema";
+import BaseLayout from "./BaseLayout.astro";
+
+interface Props {
+  game: GameMeta;
+  structuredData?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const { game, structuredData } = Astro.props;
+---
+
+<BaseLayout
+  title={game.name}
+  description={game.tagline}
+  path={`/${game.slug}/`}
+  structuredData={structuredData}
+  shell
+>
+  <slot />
+</BaseLayout>

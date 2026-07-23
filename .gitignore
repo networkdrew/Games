@@ -1,0 +1,32 @@
+# build output
+dist/
+.astro/
+
+# dependencies
+node_modules/
+bridge/node_modules/
+
+# environment
+.env
+.env.*
+!.env.example
+
+# editor / os
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# test / coverage
+coverage/
+
+# logs
+*.log
+npm-debug.log*
+
+# wrangler
+.wrangler/
+worker-configuration.d.ts
+
+.dev.vars*
+!.dev.vars.example

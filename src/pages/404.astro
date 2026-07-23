@@ -1,0 +1,25 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Page not found"
+  description="This page doesn't exist."
+  path="/404/"
+>
+  <div
+    class="mx-auto flex max-w-xl flex-col items-center gap-4 px-4 py-20 text-center sm:px-6"
+  >
+    <p class="text-text-muted font-mono text-sm">404</p>
+    <h1 class="text-text text-2xl font-bold sm:text-3xl">
+      We couldn't find that door
+    </h1>
+    <p class="text-text-muted">
+      The game or page you're looking for may have moved. Try browsing every
+      game below.
+    </p>
+    <a href="/#games" class="text-accent mt-2 text-sm hover:underline"
+      >Browse all games →</a
+    >
+  </div>
+</BaseLayout>

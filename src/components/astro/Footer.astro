@@ -1,0 +1,50 @@
+---
+import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/config/site";
+import { categories } from "@/lib/games/categories";
+---
+
+<footer class="border-border bg-bg border-t">
+  <div class="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+    <div class="grid grid-cols-1 gap-8 sm:grid-cols-3">
+      <div>
+        <p class="text-text text-sm font-bold">{SITE_NAME}</p>
+        <p class="text-text-muted mt-2 max-w-sm text-sm">{SITE_DESCRIPTION}</p>
+      </div>
+
+      <div>
+        <p class="text-text text-sm font-semibold">Categories</p>
+        <ul class="mt-2 flex flex-col gap-1.5">
+          {
+            categories.map((category) => (
+              <li>
+                <span class="text-text-muted text-sm">{category.name}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      <div>
+        <p class="text-text text-sm font-semibold">Local AI, not cloud AI</p>
+        <p class="text-text-muted mt-2 max-w-sm text-sm">
+          Games marked "Local AI" only ever talk to a language model running on
+          your own PC through a small local bridge. Nothing you type is sent to
+          a cloud AI service, and every one of those games is fully playable
+          without AI too.
+        </p>
+        <a
+          href="/#games"
+          class="text-accent mt-2 inline-block text-sm hover:underline"
+        >
+          Browse all games →
+        </a>
+      </div>
+    </div>
+
+    <div
+      class="border-border text-text-muted mt-8 flex flex-col gap-2 border-t pt-6 text-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p>&copy; {new Date().getFullYear()} {SITE_NAME}. Free to play.</p>
+    </div>
+  </div>
+</footer>

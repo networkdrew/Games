@@ -1,0 +1,204 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/config/site";
+import { categories } from "@/lib/games/categories";
+import { games, getFeaturedGames, isNewGame } from "@/lib/games/registry";
+import GameGrid from "@/islands/GameGrid";
+import Icon from "@/components/astro/Icon.astro";
+
+const featured = getFeaturedGames();
+
+const categoryNames = Object.fromEntries(categories.map((c) => [c.id, c.name]));
+
+const gameCards = games.map((g) => ({
+  slug: g.slug,
+  name: g.name,
+  tagline: g.tagline,
+  kind: g.kind,
+  tags: g.tags,
+  playTime: g.playTime,
+  categoryId: g.categoryId,
+  isNew: isNewGame(g),
+}));
+---
+
+<BaseLayout title={SITE_NAME} description={SITE_DESCRIPTION} path="/">
+  <section
+    class="dungeon-door border-border bg-bg relative overflow-hidden border-b"
+  >
+    <div
+      class="pointer-events-none absolute inset-0 opacity-60"
+      style="background: radial-gradient(ellipse 60% 50% at 50% 0%, var(--door-torch-glow), transparent 70%);"
+    >
+    </div>
+    <div
+      class="relative mx-auto max-w-3xl px-4 py-14 text-center sm:px-6 sm:py-20"
+    >
+      <h1 class="text-text text-3xl font-bold sm:text-4xl">{SITE_TAGLINE}</h1>
+      <p class="text-text-muted mx-auto mt-3 max-w-xl">
+        {SITE_DESCRIPTION}
+      </p>
+      {
+        featured[0] && (
+          <a
+            href={`/${featured[0].slug}/`}
+            class="bg-accent text-accent-contrast hover:bg-accent-hover mt-6 inline-flex items-center gap-2 rounded-md px-5 py-3 text-sm font-semibold transition-colors"
+          >
+            Play {featured[0].name}
+          </a>
+        )
+      }
+    </div>
+  </section>
+
+  {
+    featured.map((game) => (
+      <section
+        aria-labelledby="featured-heading"
+        class="border-border bg-bg-elevated border-b"
+      >
+        <div class="mx-auto grid max-w-6xl gap-8 px-4 py-14 sm:px-6 lg:grid-cols-2 lg:items-center">
+          <div>
+            <p
+              id="featured-heading"
+              class="text-accent text-xs font-semibold tracking-wide uppercase"
+            >
+              Featured game
+            </p>
+            <h2 class="text-text mt-2 text-2xl font-bold">{game.name}</h2>
+            <p class="text-text-muted mt-3">{game.tagline}</p>
+            <ul class="text-text-muted mt-4 flex flex-col gap-2 text-sm">
+              {game.description.map((paragraph) => (
+                <li>{paragraph}</li>
+              ))}
+            </ul>
+            <div class="mt-5 flex flex-wrap items-center gap-3">
+              <a
+                href={`/${game.slug}/`}
+                class="bg-accent text-accent-contrast hover:bg-accent-hover inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                <Icon name="door-open" class="h-4 w-4" />
+                Play now
+              </a>
+              <span class="text-text-muted flex items-center gap-1.5 text-xs">
+                <Icon name="message-circle" class="h-3.5 w-3.5" />
+                Runs entirely on your own PC via LM Studio — never the cloud
+              </span>
+            </div>
+          </div>
+          <div
+            class="dungeon-door door-scene door-scene--calm"
+            aria-hidden="true"
+          >
+            <div class="door-scene__fog" />
+            <svg viewBox="0 0 200 260" class="door-scene__door">
+              <rect
+                x="10"
+                y="10"
+                width="180"
+                height="240"
+                rx="6"
+                class="door-scene__frame"
+              />
+              <rect
+                x="24"
+                y="24"
+                width="152"
+                height="212"
+                rx="4"
+                class="door-scene__wood"
+              />
+              <rect
+                x="38"
+                y="38"
+                width="54"
+                height="86"
+                rx="3"
+                class="door-scene__panel"
+              />
+              <rect
+                x="108"
+                y="38"
+                width="54"
+                height="86"
+                rx="3"
+                class="door-scene__panel"
+              />
+              <rect
+                x="38"
+                y="134"
+                width="54"
+                height="86"
+                rx="3"
+                class="door-scene__panel"
+              />
+              <rect
+                x="108"
+                y="134"
+                width="54"
+                height="86"
+                rx="3"
+                class="door-scene__panel"
+              />
+              <circle cx="150" cy="132" r="5" class="door-scene__handle" />
+              <circle cx="100" cy="20" r="7" class="door-scene__rune" />
+            </svg>
+            <div class="door-scene__torch door-scene__torch--left" />
+            <div class="door-scene__torch door-scene__torch--right" />
+          </div>
+        </div>
+      </section>
+    ))
+  }
+
+  <section
+    id="games"
+    aria-labelledby="games-heading"
+    class="mx-auto max-w-6xl px-4 py-14 sm:px-6"
+  >
+    <div class="mb-6">
+      <h2 id="games-heading" class="text-text text-lg font-semibold">
+        All games
+      </h2>
+      <p class="text-text-muted mt-1 text-sm">
+        "Local AI" games only ever talk to a language model running on your own
+        PC. "Browser" games need no model at all — both kinds are always free
+        and never send your data anywhere without saying so first.
+      </p>
+    </div>
+    <GameGrid client:load games={gameCards} categoryNames={categoryNames} />
+
+    <div
+      class="border-border bg-bg-elevated mt-4 flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center"
+    >
+      <Icon name="hammer" class="text-text-muted h-5 w-5" />
+      <p class="text-text-muted text-sm">
+        More games are on the way — browser puzzles and more local-AI
+        experiments alike.
+      </p>
+    </div>
+  </section>
+
+  <section
+    aria-labelledby="privacy-heading"
+    class="border-border bg-bg-elevated border-t"
+  >
+    <div class="mx-auto max-w-3xl px-4 py-14 sm:px-6">
+      <h2
+        id="privacy-heading"
+        class="text-text flex items-center gap-2 text-lg font-semibold"
+      >
+        <Icon name="shield-check" class="text-success h-5 w-5" />
+        Local AI, never cloud AI
+      </h2>
+      <p class="text-text-muted mt-3">
+        Games marked "Local AI" talk to a small language model running on your
+        own PC through LM Studio, connected only via a tiny local bridge that
+        never leaves your machine. Nothing you type is ever sent to a cloud AI
+        service, there's no account, and every one of those games stays fully
+        playable — with polished prewritten narration — even when the local
+        bridge isn't running.
+      </p>
+    </div>
+  </section>
+</BaseLayout>

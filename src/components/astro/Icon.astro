@@ -1,0 +1,71 @@
+---
+/**
+ * Inlines a Lucide SVG at build time (zero runtime JS/network cost).
+ * Add new icons by copying the source SVG from lucide-static/icons into
+ * src/icons/ and adding its name to the IconName union below.
+ */
+const icons = import.meta.glob<string>("/src/icons/*.svg", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+export type IconName =
+  | "chevron-down"
+  | "circle-x"
+  | "door-open"
+  | "drama"
+  | "ear"
+  | "footprints"
+  | "gauge"
+  | "hammer"
+  | "hand"
+  | "heart"
+  | "home"
+  | "info"
+  | "key"
+  | "maximize"
+  | "menu"
+  | "message-circle"
+  | "minimize"
+  | "moon"
+  | "package"
+  | "refresh-cw"
+  | "scroll-text"
+  | "search"
+  | "shield-check"
+  | "skull"
+  | "sun"
+  | "sword"
+  | "volume-2"
+  | "wifi"
+  | "wifi-off"
+  | "x"
+  | "zap";
+
+interface Props {
+  name: IconName;
+  class?: string;
+  "aria-hidden"?: boolean;
+}
+
+const {
+  name,
+  class: className,
+  "aria-hidden": ariaHidden = true,
+} = Astro.props;
+const raw = icons[`/src/icons/${name}.svg`];
+if (!raw) {
+  throw new Error(`Unknown icon "${name}" — add src/icons/${name}.svg first`);
+}
+
+const svg = raw
+  .replace(
+    "<svg",
+    `<svg class="${className ?? ""}" aria-hidden="${ariaHidden}"`,
+  )
+  .replace(' width="24"', "")
+  .replace(' height="24"', "");
+---
+
+<Fragment set:html={svg} />
