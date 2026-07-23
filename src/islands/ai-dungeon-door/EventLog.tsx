@@ -1,112 +1,128 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EventEntry } from "@/lib/games-logic/ai-dungeon-door/types";
 
 interface EventLogProps {
-  intro: string;
   history: EventEntry[];
-  /** Live text accumulated from the model's streamed response so far this turn, or null when nothing is streaming. */
+  /** The player's just-submitted action, shown immediately while its response streams in. Null when nothing is pending. */
+  pendingAction: string | null;
+  /** Live text accumulated from the model's streamed response so far, or null when nothing is streaming. */
   streamingText: string | null;
-  /** True once a turn has been submitted but no delta has arrived yet. */
+  /** True once a turn/opening has been submitted but no delta has arrived yet. */
   waitingForFirstToken: boolean;
   ending?: string;
 }
 
-function EntryBadge({
-  aiNarrated,
-  requiredFallback,
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return reduced;
+}
+
+/** IF-style prompt line for a player's action — deliberately not a chat bubble. */
+function PlayerPrompt({ action }: { action: string }) {
+  return (
+    <p className="text-accent/90 font-mono text-xs break-words sm:text-sm">
+      <span aria-hidden="true">{"> "}</span>
+      {action}
+    </p>
+  );
+}
+
+function NarrationBlock({
+  text,
+  offline,
 }: {
-  aiNarrated: boolean;
-  requiredFallback: boolean;
+  text: string;
+  offline: boolean;
 }) {
-  if (requiredFallback) {
-    return (
-      <span className="text-text-muted bg-bg-sunken ml-2 rounded-full px-1.5 py-0.5 text-[10px] tracking-wide uppercase">
-        fallback
-      </span>
-    );
-  }
-  if (aiNarrated) {
-    return (
-      <span className="text-accent bg-accent/10 ml-2 rounded-full px-1.5 py-0.5 text-[10px] tracking-wide uppercase">
-        AI
-      </span>
-    );
-  }
-  return null;
+  return (
+    <p className="text-text mt-1.5 leading-relaxed break-words whitespace-pre-wrap">
+      {text}
+      {offline && (
+        <span className="text-text-muted ml-2 align-middle text-[10px] font-medium tracking-wide uppercase">
+          (offline)
+        </span>
+      )}
+    </p>
+  );
 }
 
 export default function EventLog({
-  intro,
   history,
+  pendingAction,
   streamingText,
   waitingForFirstToken,
   ending,
 }: EventLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [history.length, streamingText, waitingForFirstToken, ending]);
+    if (!el) return;
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: reducedMotion ? "auto" : "smooth",
+    });
+  }, [
+    history.length,
+    pendingAction,
+    streamingText,
+    waitingForFirstToken,
+    ending,
+    reducedMotion,
+  ]);
 
   return (
     <div
       ref={scrollRef}
-      className="border-border bg-bg-elevated/60 flex-1 overflow-y-auto rounded-lg border p-4 text-sm leading-relaxed"
-      aria-label="Event log"
+      className="border-border bg-bg-elevated/60 min-h-0 flex-1 overflow-y-auto rounded-lg border p-4 text-sm"
+      role="log"
+      aria-label="Story so far"
     >
-      <p className="text-text-muted mb-3 italic">{intro}</p>
-      <ol className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {history.map((entry, i) => (
-          <li
-            key={i}
-            className="border-border/60 border-t pt-3 first:border-t-0 first:pt-0"
-          >
-            <p className="text-text-muted flex items-center text-xs font-medium tracking-wide uppercase">
-              Turn {entry.turn} — you{" "}
-              {entry.action ? `try to: "${entry.action}"` : "act"}
-              <EntryBadge
-                aiNarrated={entry.aiNarrated}
-                requiredFallback={entry.requiredFallback}
-              />
-            </p>
-            <p className="text-text mt-1">{entry.narration}</p>
-          </li>
+          <div key={i}>
+            {entry.action && <PlayerPrompt action={entry.action} />}
+            <NarrationBlock
+              text={entry.narration}
+              offline={entry.requiredFallback}
+            />
+          </div>
         ))}
-      </ol>
 
-      {waitingForFirstToken && (
-        <p
-          className="text-text-muted border-border/60 mt-3 border-t pt-3 italic"
-          role="status"
-          aria-live="polite"
-        >
-          The door considers what happens next…
-        </p>
-      )}
+        {pendingAction !== null && <PlayerPrompt action={pendingAction} />}
 
-      {streamingText !== null && streamingText.length > 0 && (
-        <p
-          className="text-text border-border/60 mt-3 border-t pt-3"
-          role="status"
-          aria-live="polite"
-        >
-          {streamingText}
-          <span className="animate-pulse" aria-hidden="true">
-            ▌
-          </span>
-        </p>
-      )}
+        {waitingForFirstToken && (
+          <p className="text-text-muted italic" role="status">
+            <span className="animate-pulse" aria-hidden="true">
+              …
+            </span>{" "}
+            the story continues
+          </p>
+        )}
 
-      {ending && (
-        <p
-          className="text-text border-border mt-4 border-t pt-4 font-semibold"
-          role="status"
-          aria-live="assertive"
-        >
-          {ending}
-        </p>
-      )}
+        {streamingText !== null && streamingText.length > 0 && (
+          <p className="text-text leading-relaxed break-words whitespace-pre-wrap">
+            {streamingText}
+            <span className="animate-pulse" aria-hidden="true">
+              ▌
+            </span>
+          </p>
+        )}
+
+        {ending && (
+          <p className="text-text border-border mt-2 border-t pt-4 font-semibold">
+            {ending}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

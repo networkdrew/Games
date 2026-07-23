@@ -1,10 +1,11 @@
-import type { BridgeStatus, ModelTier } from "@/lib/bridge/client";
-import { friendlyModelName } from "./modelNames";
+import type { HealthResult } from "@/lib/bridge/client";
+import type { ConnectionState } from "./useBridgeConnection";
 
 export interface DiagnosticsData {
   requestId?: string;
   modelId?: string | null;
-  tier?: ModelTier;
+  alias?: string;
+  friendlyName?: string;
   firstTokenMs?: number | null;
   totalMs?: number | null;
   chunks?: number;
@@ -12,12 +13,12 @@ export interface DiagnosticsData {
   approxCompletionTokens?: number;
   corrected?: boolean;
   fallback?: boolean;
+  corrections?: string[];
 }
 
 interface DiagnosticsPanelProps {
-  status: BridgeStatus;
-  primaryModelId?: string;
-  tinyModelId?: string;
+  connectionState: ConnectionState;
+  health: HealthResult | null;
   lastTurn: DiagnosticsData | null;
 }
 
@@ -25,7 +26,9 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 py-0.5">
       <dt className="text-text-muted">{label}</dt>
-      <dd className="text-text font-mono text-xs">{value}</dd>
+      <dd className="text-text max-w-[60%] truncate text-right font-mono text-xs">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -33,12 +36,12 @@ function Row({ label, value }: { label: string; value: string }) {
 /**
  * Proves the local model is actually being used rather than a cosmetic
  * claim of "AI connected" — collapsed by default, expand to see exact
- * model ids, streaming timing, and whether this turn required a fallback.
+ * model id/alias, streaming timing, and whether this turn required a
+ * fallback or a correction.
  */
 export default function DiagnosticsPanel({
-  status,
-  primaryModelId,
-  tinyModelId,
+  connectionState,
+  health,
   lastTurn,
 }: DiagnosticsPanelProps) {
   return (
@@ -47,17 +50,15 @@ export default function DiagnosticsPanel({
         Diagnostics
       </summary>
       <dl className="flex flex-col gap-0.5 px-3 pb-3">
-        <Row label="Bridge connection" value={status} />
+        <Row label="Connection state" value={connectionState} />
+        <Row label="Bridge reachable" value={String(health?.reachable ?? false)} />
+        <Row label="Model installed" value={String(health?.installed ?? false)} />
+        <Row label="Model loaded" value={String(health?.loaded ?? false)} />
         <Row
-          label="Primary model"
-          value={
-            primaryModelId ? friendlyModelName(primaryModelId) : "not loaded"
-          }
+          label="Model"
+          value={health?.friendlyName ?? health?.modelId ?? "not loaded"}
         />
-        <Row
-          label="Tiny model"
-          value={tinyModelId ? friendlyModelName(tinyModelId) : "not loaded"}
-        />
+        <Row label="Alias" value={health?.alias ?? "dungeon-chat"} />
         {lastTurn ? (
           <>
             <Row label="Last request id" value={lastTurn.requestId ?? "—"} />
@@ -66,7 +67,7 @@ export default function DiagnosticsPanel({
               value={
                 lastTurn.fallback
                   ? "deterministic fallback"
-                  : `AI (${lastTurn.tier ?? "?"}: ${friendlyModelName(lastTurn.modelId)})`
+                  : `AI (${lastTurn.friendlyName ?? lastTurn.modelId ?? "?"})`
               }
             />
             <Row
@@ -104,6 +105,14 @@ export default function DiagnosticsPanel({
             <Row
               label="Required correction"
               value={lastTurn.corrected ? "yes" : "no"}
+            />
+            <Row
+              label="Corrections"
+              value={
+                lastTurn.corrections && lastTurn.corrections.length > 0
+                  ? lastTurn.corrections.join("; ")
+                  : "none"
+              }
             />
             <Row
               label="Used fallback narration"

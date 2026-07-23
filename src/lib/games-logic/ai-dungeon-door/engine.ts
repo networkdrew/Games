@@ -1,6 +1,8 @@
 import { parseAction } from "./intent";
 import { pickScenario, randomSeed, getScenario } from "./scenarios";
 import type {
+  ApplyControlResult,
+  ControlProposal,
   EventEntry,
   GameState,
   GameStatus,
@@ -33,9 +35,9 @@ export function createNewGame(seed: number = randomSeed()): GameState {
     clues: [],
     history: [],
     status: "playing",
-    suggestedActions: [...scenario.startingSuggestions],
     memory: [],
     recentExchanges: [],
+    openingDelivered: false,
   };
 }
 
@@ -242,7 +244,7 @@ export interface TurnContext {
   recentExchanges: GameState["recentExchanges"];
 }
 
-/** Assembles everything a turn needs to send to the model (or the deterministic chooser) — built once per turn, entirely client-side; the bridge never needs scenario knowledge. */
+/** Assembles everything the *deterministic* (offline/fallback) path needs — built once per turn, entirely client-side. Not used by the free-form AI path; see `buildAiTurnContext`. */
 export function buildTurnContext(state: GameState): TurnContext {
   const scenario = getScenario(state.scenarioId);
   return {
@@ -254,6 +256,174 @@ export function buildTurnContext(state: GameState): TurnContext {
     memoryFacts: state.memory,
     recentExchanges: state.recentExchanges,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Free-form AI game-master protocol
+// ---------------------------------------------------------------------------
+
+export interface AiTurnContext {
+  scenario: Scenario;
+  characterPrompt: string;
+  secretTruth: string;
+  environment: string;
+  stateSummary: string;
+  bounds: Scenario["bounds"];
+  clueAllowlist: Scenario["clueAllowlist"];
+  itemAllowlist: Scenario["itemAllowlist"];
+  endings: Scenario["endings"];
+  memoryFacts: MemoryFact[];
+  recentExchanges: GameState["recentExchanges"];
+}
+
+/** Assembles everything one AI-driven turn needs to send to the bridge — built once per turn, entirely client-side; the bridge never needs scenario knowledge beyond what's in this bounded payload. */
+export function buildAiTurnContext(state: GameState): AiTurnContext {
+  const scenario = getScenario(state.scenarioId);
+  return {
+    scenario,
+    characterPrompt: scenario.doorPersonality,
+    secretTruth: scenario.secretTruth,
+    environment: scenario.environment,
+    stateSummary: buildStateSummary(state),
+    bounds: scenario.bounds,
+    clueAllowlist: scenario.clueAllowlist,
+    itemAllowlist: scenario.itemAllowlist,
+    endings: scenario.endings,
+    memoryFacts: state.memory,
+    recentExchanges: state.recentExchanges,
+  };
+}
+
+function clampDelta(value: number, magnitude: number): number {
+  const m = Math.abs(magnitude);
+  return clamp(Math.round(value || 0), -m, m);
+}
+
+/**
+ * Applies a model-proposed `ControlProposal` to state — the free-form
+ * path's equivalent of `applyLegalOutcome`, and (like it) the only place
+ * state actually mutates for an AI turn. Every numeric field is clamped to
+ * the scenario's own `bounds`; every id (clue/item) is checked against the
+ * scenario's own allowlist/inventory; an ending is only ever accepted if
+ * `scenario.checkEnding` independently agrees it's reachable right now.
+ * Invalid individual fields are silently ignored (recorded in
+ * `corrections` for diagnostics only) rather than rejecting the whole turn
+ * — a good narrated response should never be thrown away over one bad
+ * optional field.
+ */
+export function applyControlProposal(
+  state: GameState,
+  scenario: Scenario,
+  proposal: ControlProposal,
+  /** The already-sanitized narration for this turn, used as the compact ending label if this turn ends the run. */
+  narration: string,
+): ApplyControlResult {
+  if (state.status !== "playing") {
+    throw new Error("Cannot act after the game has ended");
+  }
+
+  const corrections: string[] = [];
+  const nextTurn = state.turn + 1;
+
+  const healthDelta = clampDelta(proposal.healthDelta, scenario.bounds.maxHealthDelta);
+  if (healthDelta !== Math.round(proposal.healthDelta || 0))
+    corrections.push("health_delta clamped");
+  const tensionDeltaRaw = clampDelta(
+    proposal.tensionDelta,
+    scenario.bounds.maxTensionDelta,
+  );
+  const trustDeltaRaw = clampDelta(proposal.trustDelta, scenario.bounds.maxTrustDelta);
+
+  let health = clamp(state.health + healthDelta, 0, state.maxHealth);
+  const tension = clamp(state.tension + tensionDeltaRaw, 0, 100);
+  const trust = clamp(state.trust + trustDeltaRaw, 0, 100);
+  const stage = proposal.advanceStage ? state.stage + 1 : state.stage;
+
+  let clues = state.clues;
+  if (proposal.discoverClue) {
+    const known = scenario.clueAllowlist.some((c) => c.id === proposal.discoverClue);
+    if (known) {
+      if (!clues.includes(proposal.discoverClue)) {
+        clues = [...clues, proposal.discoverClue];
+      }
+    } else {
+      corrections.push("discover_clue rejected (not in allowlist)");
+    }
+  }
+
+  let inventory = state.inventory;
+  if (proposal.gainItem) {
+    const known = scenario.itemAllowlist.some((i) => i.id === proposal.gainItem);
+    if (known) {
+      if (!inventory.includes(proposal.gainItem)) {
+        inventory = [...inventory, proposal.gainItem];
+      }
+    } else {
+      corrections.push("gain_item rejected (not in allowlist)");
+    }
+  }
+  if (proposal.consumeItem) {
+    if (inventory.includes(proposal.consumeItem)) {
+      inventory = inventory.filter((i) => i !== proposal.consumeItem);
+    } else {
+      corrections.push("consume_item rejected (not owned)");
+    }
+  }
+
+  let snapped = false;
+  if (tension >= TENSION_SNAP_THRESHOLD && state.tension < TENSION_SNAP_THRESHOLD) {
+    health = clamp(health - TENSION_SNAP_DAMAGE, 0, state.maxHealth);
+    snapped = true;
+  }
+
+  let status: GameStatus = state.status;
+  let ending = state.ending;
+
+  if (proposal.ending === "WIN" && scenario.checkEnding(
+    { ...state, health, tension, trust, stage, clues, inventory },
+    "WIN",
+  )) {
+    status = "won";
+    ending = narration;
+  } else if (proposal.ending === "LOSS" && scenario.checkEnding(
+    { ...state, health, tension, trust, stage, clues, inventory },
+    "LOSS",
+  )) {
+    status = "lost";
+    ending = narration;
+  } else {
+    if (proposal.ending)
+      corrections.push(`${proposal.ending.toLowerCase()} rejected (condition not met)`);
+    if (health <= 0) {
+      status = "lost";
+      ending =
+        "Your strength gives out. The dark behind the door closes in, and your run ends here.";
+    } else if (nextTurn >= scenario.maxTurns) {
+      status = "lost";
+      ending =
+        "Time runs out. Whatever chance you had slips away, and the door stays exactly as shut as when you arrived.";
+    }
+  }
+
+  const nextState: GameState = {
+    ...state,
+    turn: nextTurn,
+    health,
+    tension,
+    trust,
+    stage,
+    clues,
+    inventory,
+    status,
+    ending,
+  };
+
+  return { state: nextState, snapped, corrections };
+}
+
+/** Marks the opening scene as delivered — set once, right after the model's (or offline fallback's) opening narration has been appended to history. */
+export function markOpeningDelivered(state: GameState): GameState {
+  return { ...state, openingDelivered: true };
 }
 
 export interface DeterministicActionResult {

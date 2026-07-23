@@ -45,6 +45,11 @@ const jsonLdBlocks = structuredData
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/ai-dungeon-door.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content={SITE_NAME} />
     <meta
       name="theme-color"
       content="#f6f4f8"
@@ -81,6 +86,7 @@ const jsonLdBlocks = structuredData
     class={shell
       ? "bg-bg text-text h-svh overflow-hidden"
       : "bg-bg text-text flex min-h-svh flex-col"}
+    style={shell ? "height: 100dvh;" : undefined}
   >
     <SkipLink />
     {!shell && <Header />}

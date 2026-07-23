@@ -1,38 +1,88 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   appendExchange,
+  applyControlProposal,
   applyDeterministicAction,
-  applyLegalOutcome,
-  buildTurnContext,
+  buildAiTurnContext,
   createNewGame,
   isInventoryCheck,
+  markOpeningDelivered,
   pushMemoryFact,
 } from "@/lib/games-logic/ai-dungeon-door/engine";
 import { getScenario } from "@/lib/games-logic/ai-dungeon-door/scenarios";
 import {
-  findValidatedOutcome,
   sanitizeMemoryFact,
   sanitizeNarrationText,
 } from "@/lib/games-logic/ai-dungeon-door/narration";
 import type { GameState } from "@/lib/games-logic/ai-dungeon-door/types";
-import {
-  BridgeClient,
-  type BridgeStatus,
-  type ModelTier,
-} from "@/lib/bridge/client";
+import { BridgeClient, type TurnEvent } from "@/lib/bridge/client";
 import { buttonSecondary } from "@/components/react/styles";
 import Icon from "@/components/react/Icon";
+import GameAppShell from "@/components/react/GameAppShell";
 import DoorScene from "./DoorScene";
 import StatusBar from "./StatusBar";
 import EventLog from "./EventLog";
 import ActionInput from "./ActionInput";
 import ConnectionStatus from "./ConnectionStatus";
 import DiagnosticsPanel, { type DiagnosticsData } from "./DiagnosticsPanel";
-import { friendlyModelName } from "./modelNames";
+import { useBridgeConnection, type ConnectionState } from "./useBridgeConnection";
 
-/** Rough chars-per-token heuristic for the diagnostics panel's "approx tokens" display — LM Studio's streamed responses don't reliably report usage, so this is clearly labeled as approximate, never exact. */
+/** Rough chars-per-token heuristic for the diagnostics panel's "approx tokens" display — the bridge's streamed responses don't reliably report usage, so this is clearly labeled as approximate, never exact. */
 function approxTokens(text: string): number {
   return Math.max(1, Math.round(text.length / 4));
+}
+
+const LOADING_COPY: Partial<Record<ConnectionState, string>> = {
+  connecting: "Waking the dungeon…",
+  "loading-model": "Loading the local storyteller…",
+  warming: "Opening the door…",
+  failed: "The dungeon is quiet.",
+};
+
+function loadingHeadline(state: ConnectionState, friendlyName?: string): string {
+  if (state === "loading-model" && friendlyName) return `Loading ${friendlyName}…`;
+  return LOADING_COPY[state] ?? "Preparing the encounter…";
+}
+
+interface LoadingScreenProps {
+  state: ConnectionState;
+  friendlyName?: string;
+  onRetry: () => void;
+}
+
+function LoadingScreen({ state, friendlyName, onRetry }: LoadingScreenProps) {
+  const failed = state === "failed";
+  return (
+    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="w-full max-w-xs">
+        <DoorScene tension={10} status="playing" />
+      </div>
+      <p className="text-text text-base font-medium">
+        {loadingHeadline(state, friendlyName)}
+      </p>
+      {failed ? (
+        <>
+          <p className="text-text-muted max-w-sm text-sm">
+            The local storyteller couldn't be reached. You can keep waiting,
+            retry, or just start — the door still narrates itself offline.
+          </p>
+          <button type="button" onClick={onRetry} className={buttonSecondary}>
+            <Icon name="refresh-cw" className="h-4 w-4" />
+            Retry
+          </button>
+        </>
+      ) : (
+        <p className="text-text-muted text-xs" aria-hidden="true">
+          {"· ".repeat(3).trim()}
+        </p>
+      )}
+      <details className="text-text-muted mt-2 text-xs">
+        <summary className="cursor-pointer select-none">Diagnostics</summary>
+        <p className="mt-1 font-mono">connection: {state}</p>
+        {friendlyName && <p className="font-mono">model: {friendlyName}</p>}
+      </details>
+    </div>
+  );
 }
 
 interface AIDungeonDoorGameProps {
@@ -46,104 +96,197 @@ export default function AIDungeonDoorGame({
   const [gameState, setGameState] = useState<GameState>(() =>
     createNewGame(initialSeed),
   );
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("unknown");
-  const [primaryModelId, setPrimaryModelId] = useState<string | undefined>(
-    undefined,
-  );
-  const [tinyModelId, setTinyModelId] = useState<string | undefined>(undefined);
-  const [preferredTier, setPreferredTier] = useState<"auto" | "tiny">("auto");
   const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [waitingForFirstToken, setWaitingForFirstToken] = useState(false);
   const [lastDiagnostics, setLastDiagnostics] =
     useState<DiagnosticsData | null>(null);
-  const bridgeRef = useRef<BridgeClient | null>(null);
+  const [announcement, setAnnouncement] = useState("");
 
+  const bridgeRef = useRef<BridgeClient | null>(null);
   if (!bridgeRef.current) {
     bridgeRef.current = new BridgeClient();
   }
+  const openingRequestedRef = useRef(false);
 
-  const checkConnection = useCallback(async () => {
-    setBridgeStatus("checking");
-    const result = await bridgeRef.current!.checkHealth();
-    setBridgeStatus(result.status);
-    setPrimaryModelId(result.primaryModelId);
-    setTinyModelId(result.tinyModelId);
-  }, []);
+  const connection = useBridgeConnection(bridgeRef.current);
+  const scenario = getScenario(gameState.scenarioId);
 
   useEffect(() => {
-    // Exactly one health check on mount — never polled on an interval.
-    checkConnection();
     return () => {
       bridgeRef.current?.cancelPending();
     };
-  }, [checkConnection]);
+  }, []);
 
-  const scenario = getScenario(gameState.scenarioId);
-  const activeTier: ModelTier | "deterministic" =
-    bridgeStatus === "connected" &&
-    (preferredTier === "tiny" ? tinyModelId : primaryModelId)
-      ? preferredTier === "tiny"
-        ? "tiny"
-        : "primary"
-      : "deterministic";
+  // Startup / new-game sequence: once the bridge is warm (or already ready
+  // right after a New Game), stream the model's own opening scene live into
+  // the transcript. If the bridge never becomes reachable, a separate effect
+  // below falls back to the scenario's deterministic intro line instead.
+  useEffect(() => {
+    if (gameState.openingDelivered) return;
+    if (pending) return;
+    if (openingRequestedRef.current) return;
+    const canWarm = connection.readyToWarm || connection.state === "ready";
+    if (!canWarm) return;
+    openingRequestedRef.current = true;
+    void runOpening();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection.readyToWarm, connection.state, gameState.openingDelivered, pending]);
+
+  // Offline/failed at startup: don't leave the player staring at a loading
+  // screen forever — fall back to the scenario's own deterministic intro.
+  useEffect(() => {
+    if (gameState.openingDelivered) return;
+    if (pending) return;
+    if (connection.state !== "offline" && connection.state !== "failed") return;
+    openingRequestedRef.current = true;
+    setGameState((prev) =>
+      markOpeningDelivered(
+        appendExchange(prev, "", scenario.intro, false, true),
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection.state, gameState.openingDelivered, pending, scenario.intro]);
+
+  async function runOpening() {
+    setPending(true);
+    setPendingAction(null);
+    setWaitingForFirstToken(true);
+    setStreamingText("");
+
+    const diag: DiagnosticsData = {};
+    let liveText = "";
+    let sawFirstDelta = false;
+    let sawAnyEvent = false;
+
+    const onEvent = (event: TurnEvent) => {
+      sawAnyEvent = true;
+      if (event.type === "model") {
+        diag.modelId = event.modelId;
+        diag.alias = event.alias;
+        diag.friendlyName = event.friendlyName;
+      } else if (event.type === "delta") {
+        if (!sawFirstDelta) {
+          sawFirstDelta = true;
+          setWaitingForFirstToken(false);
+        }
+        liveText += event.text;
+        setStreamingText(liveText);
+      } else if (event.type === "done") {
+        const stats = event.stats;
+        diag.firstTokenMs = (stats.firstTokenMs as number | null) ?? null;
+        diag.totalMs = (stats.totalMs as number | null) ?? null;
+        diag.chunks = stats.chunks as number | undefined;
+      }
+    };
+
+    const result = await bridgeRef.current!.streamTurn(
+      {
+        mode: "opening",
+        characterPrompt: scenario.doorPersonality,
+        secretTruth: scenario.secretTruth,
+        environment: scenario.environment,
+      },
+      { onEvent },
+    );
+
+    setWaitingForFirstToken(false);
+    setStreamingText(null);
+
+    if (result.aborted) return;
+
+    // A stream that never delivered a single event almost certainly means
+    // the bridge itself was unreachable (network/connection failure), as
+    // opposed to a reachable bridge that just couldn't produce a valid
+    // response — only the former should flip the connection state.
+    if (result.fallback && !sawAnyEvent) {
+      connection.reportDisconnect();
+    } else {
+      connection.markReady();
+    }
+
+    const sanitized = sanitizeNarrationText(result.narration);
+    const openingText = sanitized ?? scenario.intro;
+    const aiNarrated = sanitized !== null && !result.fallback;
+
+    setGameState((prev) =>
+      markOpeningDelivered(
+        appendExchange(prev, "", openingText, aiNarrated, !aiNarrated),
+      ),
+    );
+    setLastDiagnostics(diag);
+    setPending(false);
+    setAnnouncement("The door opens. A new message arrived.");
+  }
 
   async function handleAction(rawInput: string) {
-    if (pending || gameState.status !== "playing") return;
-    setPending(true);
-    setStreamingText(null);
-    setWaitingForFirstToken(false);
+    if (pending || gameState.status !== "playing" || !gameState.openingDelivered)
+      return;
 
     if (isInventoryCheck(rawInput, gameState.inventory)) {
       const { state: nextState, narration } = applyDeterministicAction(
         gameState,
         rawInput,
       );
-      setGameState(
-        appendExchange(nextState, rawInput, narration, false, false),
-      );
-      setPending(false);
+      setGameState(appendExchange(nextState, rawInput, narration, false, false));
       return;
     }
 
-    if (activeTier === "deterministic") {
+    setPending(true);
+    setPendingAction(rawInput);
+    setStreamingText(null);
+    setWaitingForFirstToken(false);
+
+    const useAi = connection.state === "ready";
+
+    if (!useAi) {
+      const wasOffline = connection.state === "offline" || connection.state === "failed";
       const { state: nextState } = applyDeterministicAction(
         gameState,
         rawInput,
+        !wasOffline,
       );
       setGameState(nextState);
-      setLastDiagnostics({ fallback: true, tier: undefined, modelId: null });
+      setLastDiagnostics({ fallback: true });
       setPending(false);
+      setPendingAction(null);
       return;
     }
 
-    const ctx = buildTurnContext(gameState);
-    const wireLegalOutcomes = ctx.legalOutcomes.map((o) => ({
-      id: o.id,
-      description: o.description,
-    }));
-    const diag: DiagnosticsData = { tier: activeTier };
+    const ctx = buildAiTurnContext(gameState);
+    const diag: DiagnosticsData = {};
     let liveText = "";
     let sawFirstDelta = false;
+    let sawAnyEvent = false;
 
     setWaitingForFirstToken(true);
     const result = await bridgeRef.current!.streamTurn(
       {
-        modelTier: activeTier,
+        mode: "turn",
         characterPrompt: ctx.characterPrompt,
         secretTruth: ctx.secretTruth,
+        environment: ctx.environment,
         stateSummary: ctx.stateSummary,
-        legalOutcomes: wireLegalOutcomes,
+        bounds: {
+          healthMagnitude: ctx.bounds.maxHealthDelta,
+          tensionMagnitude: ctx.bounds.maxTensionDelta,
+          trustMagnitude: ctx.bounds.maxTrustDelta,
+        },
+        clueAllowlist: ctx.clueAllowlist,
+        itemAllowlist: ctx.itemAllowlist,
+        endings: ctx.endings,
         memoryFacts: ctx.memoryFacts,
         recentExchanges: ctx.recentExchanges,
         playerAction: rawInput,
       },
       {
         onEvent: (event) => {
-          if (event.type === "start") {
-            diag.requestId = event.requestId;
-          } else if (event.type === "model") {
+          sawAnyEvent = true;
+          if (event.type === "model") {
             diag.modelId = event.modelId;
+            diag.alias = event.alias;
+            diag.friendlyName = event.friendlyName;
           } else if (event.type === "delta") {
             if (!sawFirstDelta) {
               sawFirstDelta = true;
@@ -151,11 +294,12 @@ export default function AIDungeonDoorGame({
             }
             liveText += event.text;
             setStreamingText(liveText);
-          } else if (event.type === "outcome") {
+          } else if (event.type === "control") {
             diag.corrected = event.corrected;
             diag.fallback = event.fallback;
+            diag.corrections = event.corrections;
           } else if (event.type === "done") {
-            const stats = event.stats as Record<string, unknown>;
+            const stats = event.stats;
             diag.firstTokenMs = (stats.firstTokenMs as number | null) ?? null;
             diag.totalMs = (stats.totalMs as number | null) ?? null;
             diag.chunks = stats.chunks as number | undefined;
@@ -166,23 +310,17 @@ export default function AIDungeonDoorGame({
 
     setWaitingForFirstToken(false);
     setStreamingText(null);
+    setPendingAction(null);
 
-    if (result.aborted) {
-      // Superseded by a reset (New Run) or unmount — the caller that
-      // superseded us already owns `pending`/state; never touch either here.
-      return;
+    if (result.aborted) return;
+
+    if (result.fallback && !sawAnyEvent) {
+      connection.reportDisconnect();
+    } else {
+      connection.markReady();
     }
 
-    const validated =
-      !result.fallback && result.outcomeId
-        ? findValidatedOutcome(result.outcomeId, ctx.legalOutcomes)
-        : null;
-
-    if (!validated) {
-      // No model available, the model's output failed validation twice, or
-      // (defense in depth) the bridge claimed an outcome that isn't
-      // actually in our own legal list — fall back to the exact same
-      // deterministic engine used fully offline.
+    if (result.fallback || !result.proposal) {
       const { state: nextState } = applyDeterministicAction(
         gameState,
         rawInput,
@@ -195,11 +333,17 @@ export default function AIDungeonDoorGame({
     }
 
     const sanitized = sanitizeNarrationText(result.narration);
-    const finalNarration = sanitized ?? validated.fallbackNarration;
+    const finalNarration =
+      sanitized ?? "The door responds, though the words are hard to make out.";
     const aiNarrated = sanitized !== null;
-    const memoryFact = sanitizeMemoryFact(result.memoryFact);
+    const memoryFact = sanitizeMemoryFact(result.proposal.memory);
 
-    const { state: appliedState } = applyLegalOutcome(gameState, validated);
+    const { state: appliedState, corrections } = applyControlProposal(
+      gameState,
+      scenario,
+      result.proposal,
+      finalNarration,
+    );
     const withMemory = pushMemoryFact(appliedState, memoryFact);
     const finalState = appendExchange(
       withMemory,
@@ -216,66 +360,73 @@ export default function AIDungeonDoorGame({
         ctx.characterPrompt + ctx.secretTruth + ctx.stateSummary,
       ),
       approxCompletionTokens: approxTokens(finalNarration),
+      corrections: corrections.length > 0 ? corrections : diag.corrections,
     });
     setPending(false);
+    setAnnouncement("A new message arrived.");
   }
 
-  function handleNewRun() {
+  function handleCancel() {
     bridgeRef.current?.cancelPending();
+    setPending(false);
+    setPendingAction(null);
+    setStreamingText(null);
+    setWaitingForFirstToken(false);
+  }
+
+  function handleNewGame() {
+    bridgeRef.current?.cancelPending();
+    openingRequestedRef.current = false;
     setGameState(createNewGame());
+    setPending(false);
+    setPendingAction(null);
     setStreamingText(null);
     setWaitingForFirstToken(false);
     setLastDiagnostics(null);
-    setPending(false);
+    setAnnouncement("A new game has begun.");
   }
 
   const gameEnded = gameState.status !== "playing";
-  const tinyModeSelectable =
-    Boolean(tinyModelId) && bridgeStatus === "connected";
+  const showLoadingScreen =
+    connection.state === "connecting" ||
+    connection.state === "loading-model" ||
+    connection.state === "failed" ||
+    (connection.state === "warming" && waitingForFirstToken && !gameState.openingDelivered);
 
   return (
-    <div className="dungeon-door bg-bg text-text flex h-full min-h-0 flex-col">
-      <header className="border-border bg-bg flex h-14 shrink-0 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)] sm:px-4">
-        <a
-          href="/"
-          className="text-text-muted hover:bg-bg-sunken hover:text-text inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm transition-colors"
-        >
-          <Icon name="home" className="h-4 w-4" />
-          <span className="hidden sm:inline">Games</span>
-        </a>
-        <span className="text-text truncate text-sm font-semibold sm:text-base">
-          AI Dungeon Door
-        </span>
-        <div className="ml-auto flex items-center gap-3">
-          {tinyModeSelectable && (
-            <label className="text-text-muted hidden items-center gap-1.5 text-xs sm:flex">
-              <input
-                type="checkbox"
-                checked={preferredTier === "tiny"}
-                onChange={(e) =>
-                  setPreferredTier(e.target.checked ? "tiny" : "auto")
-                }
-              />
-              Tiny Model (experimental)
-            </label>
-          )}
-          <ConnectionStatus
-            status={bridgeStatus}
-            primaryModelId={primaryModelId}
-            tinyModelId={tinyModelId}
-            activeTier={activeTier}
-            generating={pending && activeTier !== "deterministic"}
-            onReconnect={checkConnection}
-          />
-        </div>
-      </header>
-
-      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4 overflow-y-auto p-3 sm:p-6">
+    <GameAppShell
+      gameTitle={scenario.name}
+      className="dungeon-door"
+      onNewGame={handleNewGame}
+      newGameLabel="New game"
+      connectionSlot={
+        <ConnectionStatus
+          state={connection.state}
+          health={connection.health}
+          onRetry={connection.retry}
+        />
+      }
+      loading={
+        showLoadingScreen ? (
+          <div className="dungeon-door bg-bg text-text h-full">
+            <LoadingScreen
+              state={connection.state}
+              friendlyName={connection.health?.friendlyName}
+              onRetry={connection.retry}
+            />
+          </div>
+        ) : undefined
+      }
+    >
+      <div aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-6">
         <DoorScene tension={gameState.tension} status={gameState.status} />
         <StatusBar state={gameState} />
         <EventLog
-          intro={scenario.intro}
           history={gameState.history}
+          pendingAction={pendingAction}
           streamingText={streamingText}
           waitingForFirstToken={waitingForFirstToken}
           ending={gameState.ending}
@@ -284,56 +435,27 @@ export default function AIDungeonDoorGame({
         {gameEnded ? (
           <button
             type="button"
-            onClick={handleNewRun}
+            onClick={handleNewGame}
             className={buttonSecondary}
           >
             <Icon name="refresh-cw" className="h-4 w-4" />
-            Start a new run
+            Start a new game
           </button>
         ) : (
-          <>
-            <ActionInput
-              suggestedActions={gameState.suggestedActions}
-              disabled={pending}
-              onSubmit={handleAction}
-            />
-            <button
-              type="button"
-              onClick={handleNewRun}
-              className="text-text-muted hover:text-text self-start text-xs underline-offset-2 hover:underline"
-            >
-              Restart with a new door
-            </button>
-          </>
-        )}
-
-        {bridgeStatus === "unavailable" && (
-          <p className="text-text-muted text-xs">
-            All AI processing happens locally on your own PC — nothing you type
-            is ever sent to a cloud service. Right now the local bridge isn't
-            reachable, so the door is narrating itself with prewritten text
-            instead. The game is fully playable either way.
-          </p>
-        )}
-
-        {bridgeStatus === "connected" && !primaryModelId && (
-          <p className="text-text-muted text-xs">
-            No capable model is currently loaded in LM Studio, so this run uses
-            deterministic narration
-            {tinyModelId
-              ? ` (or check "Tiny Model" above for an experimental, lower-quality AI option using ${friendlyModelName(tinyModelId)})`
-              : ""}
-            .
-          </p>
+          <ActionInput
+            disabled={pending || !gameState.openingDelivered}
+            pending={pending}
+            onSubmit={handleAction}
+            onCancel={handleCancel}
+          />
         )}
 
         <DiagnosticsPanel
-          status={bridgeStatus}
-          primaryModelId={primaryModelId}
-          tinyModelId={tinyModelId}
+          connectionState={connection.state}
+          health={connection.health}
           lastTurn={lastDiagnostics}
         />
       </div>
-    </div>
+    </GameAppShell>
   );
 }

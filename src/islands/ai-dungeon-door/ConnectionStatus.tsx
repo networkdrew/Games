@@ -1,46 +1,44 @@
-import type { BridgeStatus, ModelTier } from "@/lib/bridge/client";
+import type { HealthResult } from "@/lib/bridge/client";
+import type { ConnectionState } from "./useBridgeConnection";
 import Icon from "@/components/react/Icon";
 import { iconButton } from "@/components/react/styles";
-import { friendlyModelName } from "./modelNames";
 
 interface ConnectionStatusProps {
-  status: BridgeStatus;
-  primaryModelId?: string;
-  tinyModelId?: string;
-  activeTier: ModelTier | "deterministic";
-  generating: boolean;
-  onReconnect: () => void;
+  state: ConnectionState;
+  health: HealthResult | null;
+  onRetry: () => void;
 }
 
-function computeLabel(props: ConnectionStatusProps): string {
-  const { status, primaryModelId, tinyModelId, activeTier, generating } = props;
-  if (generating) return "Generating locally…";
-  if (status === "unknown" || status === "checking")
-    return "Checking local AI…";
-  if (status === "unavailable")
-    return "Local AI unavailable — Offline fallback mode";
-
-  if (activeTier === "primary" && primaryModelId) {
-    return `Local AI: ${friendlyModelName(primaryModelId)} connected`;
+/** Plain-language, non-technical labels — no model ids, no jargon. Full technical detail lives in DiagnosticsPanel. */
+function computeLabel(state: ConnectionState): string {
+  switch (state) {
+    case "connecting":
+      return "Connecting…";
+    case "loading-model":
+    case "warming":
+      return "Waking local storyteller…";
+    case "ready":
+      return "Local storyteller ready";
+    case "reconnecting":
+      return "Reconnecting…";
+    case "offline":
+    case "failed":
+      return "Offline story mode";
   }
-  if (activeTier === "tiny" && tinyModelId) {
-    return `Local AI: ${friendlyModelName(tinyModelId)} connected (experimental)`;
-  }
-  if (!primaryModelId && !tinyModelId)
-    return "Local AI unavailable — Offline fallback mode";
-  return "Offline fallback mode";
 }
 
-export default function ConnectionStatus(props: ConnectionStatusProps) {
-  const { status, onReconnect } = props;
-  const label = computeLabel(props);
-  const dotClass = props.generating
-    ? "bg-accent animate-pulse"
-    : status === "unavailable"
-      ? "bg-danger"
-      : props.activeTier !== "deterministic"
-        ? "bg-success"
-        : "bg-text-muted";
+export default function ConnectionStatus({
+  state,
+  onRetry,
+}: ConnectionStatusProps) {
+  const label = computeLabel(state);
+  const showRetry = state === "offline" || state === "failed";
+  const dotClass =
+    state === "ready"
+      ? "bg-success"
+      : state === "offline" || state === "failed"
+        ? "bg-text-muted"
+        : "bg-accent animate-pulse";
 
   return (
     <div
@@ -53,13 +51,13 @@ export default function ConnectionStatus(props: ConnectionStatusProps) {
         aria-hidden="true"
       />
       <span className="hidden sm:inline">{label}</span>
-      {status === "unavailable" && (
+      {showRetry && (
         <button
           type="button"
-          onClick={onReconnect}
+          onClick={onRetry}
           className={iconButton}
-          aria-label="Reconnect to local AI"
-          title="Reconnect to local AI"
+          aria-label="Retry connecting to local storyteller"
+          title="Retry"
         >
           <Icon name="refresh-cw" className="h-4 w-4" />
         </button>

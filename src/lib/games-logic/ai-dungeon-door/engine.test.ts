@@ -1,13 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyControlProposal,
   applyDeterministicAction,
   applyLegalOutcome,
+  buildAiTurnContext,
   buildTurnContext,
   createNewGame,
   getLegalOutcomes,
+  markOpeningDelivered,
   pushMemoryFact,
 } from "./engine";
-import { SCENARIOS } from "./scenarios";
+import { getScenario, SCENARIOS } from "./scenarios";
+import type { ControlProposal } from "./types";
+
+function blankProposal(overrides: Partial<ControlProposal> = {}): ControlProposal {
+  return {
+    intent: "test",
+    healthDelta: 0,
+    tensionDelta: 0,
+    trustDelta: 0,
+    discoverClue: null,
+    gainItem: null,
+    consumeItem: null,
+    advanceStage: false,
+    ending: null,
+    memory: null,
+    ...overrides,
+  };
+}
 
 describe("createNewGame", () => {
   it("creates a playing game with full health, base trust, and starting inventory", () => {
@@ -228,5 +248,141 @@ describe("pushMemoryFact", () => {
     expect(state.memory.length).toBeLessThanOrEqual(8);
     expect(state.memory[state.memory.length - 1]).toBe("fact 11");
     expect(state.memory).not.toContain("fact 0");
+  });
+});
+
+describe("createNewGame (free-form path)", () => {
+  it("starts with openingDelivered false and no suggestedActions field", () => {
+    const state = createNewGame(0);
+    expect(state.openingDelivered).toBe(false);
+    expect(state).not.toHaveProperty("suggestedActions");
+  });
+});
+
+describe("markOpeningDelivered", () => {
+  it("sets openingDelivered without mutating anything else", () => {
+    const state = createNewGame(0);
+    const next = markOpeningDelivered(state);
+    expect(next.openingDelivered).toBe(true);
+    expect(next.turn).toBe(state.turn);
+  });
+});
+
+describe("buildAiTurnContext", () => {
+  it("exposes bounds, allowlists, and endings alongside the character/scenario prompts", () => {
+    const state = createNewGame(1); // trapped-adventurer
+    const ctx = buildAiTurnContext(state);
+    expect(ctx.characterPrompt.length).toBeGreaterThan(0);
+    expect(ctx.secretTruth.length).toBeGreaterThan(0);
+    expect(ctx.environment.length).toBeGreaterThan(0);
+    expect(ctx.stateSummary).toContain("health=");
+    expect(ctx.bounds.maxHealthDelta).toBeGreaterThan(0);
+    expect(ctx.clueAllowlist.length).toBeGreaterThan(0);
+    expect(ctx.endings.length).toBeGreaterThan(0);
+  });
+});
+
+describe("applyControlProposal", () => {
+  it("clamps deltas to the scenario's own bounds", () => {
+    const state = createNewGame(0);
+    const scenario = getScenario(state.scenarioId);
+    const result = applyControlProposal(
+      state,
+      scenario,
+      blankProposal({ healthDelta: -9999, tensionDelta: 9999 }),
+      "Something dramatic happens.",
+    );
+    expect(result.state.health).toBe(
+      Math.max(0, state.health - scenario.bounds.maxHealthDelta),
+    );
+    expect(result.state.tension).toBeLessThanOrEqual(100);
+  });
+
+  it("ignores a clue id outside the scenario's allowlist and records a correction", () => {
+    const state = createNewGame(0);
+    const scenario = getScenario(state.scenarioId);
+    const result = applyControlProposal(
+      state,
+      scenario,
+      blankProposal({ discoverClue: "totally-made-up-clue" }),
+      "Nothing much happens.",
+    );
+    expect(result.state.clues).not.toContain("totally-made-up-clue");
+    expect(result.corrections.length).toBeGreaterThan(0);
+  });
+
+  it("adds a valid allowlisted clue", () => {
+    const state = createNewGame(0); // sleeping-creature
+    const scenario = getScenario(state.scenarioId);
+    const validClueId = scenario.clueAllowlist[0]!.id;
+    const result = applyControlProposal(
+      state,
+      scenario,
+      blankProposal({ discoverClue: validClueId }),
+      "You notice something.",
+    );
+    expect(result.state.clues).toContain(validClueId);
+  });
+
+  it("never grants a WIN ending the scenario's own checkEnding rejects", () => {
+    const state = createNewGame(1); // trapped-adventurer, trust starts at 30 (< 50 required)
+    const scenario = getScenario(state.scenarioId);
+    const result = applyControlProposal(
+      state,
+      scenario,
+      blankProposal({ ending: "WIN" }),
+      "You try to free him.",
+    );
+    expect(result.state.status).toBe("playing");
+    expect(result.corrections.some((c) => c.includes("rejected"))).toBe(true);
+  });
+
+  it("grants a WIN ending once the scenario's checkEnding agrees it's reachable", () => {
+    let state = createNewGame(1); // trapped-adventurer
+    const scenario = getScenario(state.scenarioId);
+    // Push trust up to (and past) the scenario's own win threshold first.
+    for (let i = 0; i < 5 && state.trust < 50 && state.status === "playing"; i++) {
+      const result = applyControlProposal(
+        state,
+        scenario,
+        blankProposal({ trustDelta: 20 }),
+        "Trust grows.",
+      );
+      state = result.state;
+    }
+    expect(state.trust).toBeGreaterThanOrEqual(50);
+    const winResult = applyControlProposal(
+      state,
+      scenario,
+      blankProposal({ ending: "WIN" }),
+      "He accepts your help at last.",
+    );
+    expect(winResult.state.status).toBe("won");
+    expect(winResult.state.ending).toBe("He accepts your help at last.");
+  });
+
+  it("forces a loss once health reaches zero regardless of the proposal", () => {
+    const state = createNewGame(0);
+    const scenario = getScenario(state.scenarioId);
+    const result = applyControlProposal(
+      state,
+      scenario,
+      blankProposal({ healthDelta: -scenario.bounds.maxHealthDelta * 5 }),
+      "A brutal blow lands.",
+    );
+    if (result.state.health <= 0) {
+      expect(result.state.status).toBe("lost");
+    }
+  });
+
+  it("throws if the game has already ended", () => {
+    let state = createNewGame(0);
+    for (let i = 0; i < 20 && state.status === "playing"; i++) {
+      state = applyDeterministicAction(state, "kick the door").state;
+    }
+    const scenario = getScenario(state.scenarioId);
+    expect(() =>
+      applyControlProposal(state, scenario, blankProposal(), "text"),
+    ).toThrow();
   });
 });

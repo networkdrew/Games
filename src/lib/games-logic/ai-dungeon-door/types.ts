@@ -1,15 +1,23 @@
 /**
  * All authoritative game state and outcome shapes for AI Dungeon Door.
  *
- * Architecture: the engine (this module + engine.ts + scenarios.ts) decides
- * the full set of outcomes that are *legal* right now — never the model.
- * The model's only two jobs are (1) interpret the player's free-text action
- * well enough to pick exactly one of those legal outcomes, and (2) narrate
- * it. The numeric/state consequence of each legal outcome (how much damage,
- * which clue, whether it wins) is baked into the `LegalOutcome` object by
- * the engine *before* the model ever sees it — the model can only select an
- * id from a fixed list, never invent a new one or its magnitude. See
- * docs/architecture.md's "critical architecture rule" section.
+ * Architecture (two parallel paths, see docs/architecture.md):
+ *
+ * 1. **The free-form AI path** (normal play, model connected): the model is
+ *    the game master. It interprets the player's free-text action however
+ *    it judges best, and proposes a `ControlProposal` — small, bounded
+ *    numeric deltas plus optional clue/item/ending picks from
+ *    scenario-defined allowlists. The engine (`applyControlProposal`) never
+ *    trusts the proposal blindly: every field is clamped to the scenario's
+ *    `StateBounds`, every id is checked against the scenario's own
+ *    allowlists, and an ending is only ever accepted if the scenario's own
+ *    `checkEnding` predicate agrees it's currently reachable. The model
+ *    never touches `GameState` directly.
+ * 2. **The deterministic path** (offline play, or the final safe fallback
+ *    after a malformed AI response can't be corrected): the original
+ *    closed-vocabulary `LegalOutcome` system below, unchanged. It exists
+ *    purely so the game is always playable with zero AI, and so a failed AI
+ *    turn always has an identical, always-reliable place to land.
  */
 
 export type ScenarioId =
@@ -126,7 +134,7 @@ export interface GameState {
   maxHealth: number;
   /** 0-100 danger/tension level; rising tension shifts the entity's tone and raises the odds of a bad outcome. */
   tension: number;
-  /** 0-100 trust the entity has in the player; gates the more cooperative outcomes (including most wins). */
+  /** 0-100 trust the entity has in the player; gates the more cooperative outcomes (including most wins/endings). */
   trust: number;
   /** Scenario-internal progress flag (0 = nothing unlocked yet, 1 = a stage-one condition has been met). */
   stage: number;
@@ -134,34 +142,115 @@ export interface GameState {
   clues: string[];
   history: EventEntry[];
   status: GameStatus;
-  suggestedActions: string[];
   /** Bounded rolling memory of continuity facts (promises, lies, discoveries) — capped, see engine.ts's MEMORY_CAP. */
   memory: MemoryFact[];
   /** Last few action/narration pairs, capped — sent to the model for short-term continuity without resending the whole transcript. */
   recentExchanges: RecentExchange[];
   /** Set once, on win/loss, to a deterministic ending line — never re-narrated by the model. */
   ending?: string;
+  /** True once the model has generated (and the player has received) the opening scene for this run. */
+  openingDelivered: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Free-form AI game-master protocol (see module docstring above).
+// ---------------------------------------------------------------------------
+
+/** Symmetric per-turn magnitude caps the engine enforces on the model's proposed numeric deltas — never sent as "permission" for the full range, just a clamp ceiling. */
+export interface StateBounds {
+  maxHealthDelta: number;
+  maxTensionDelta: number;
+  maxTrustDelta: number;
+}
+
+/** One clue or item the model is allowed to award — id is the only thing the wire protocol/engine trusts; `hint` is player-invisible authoring context for the model's own judgment, never validated. */
+export interface AllowlistEntry {
+  id: string;
+  hint: string;
+}
+
+export type EndingKind = "WIN" | "LOSS";
+
+export interface EndingDef {
+  id: string;
+  kind: EndingKind;
+  /** Plain-language condition shown to the model, describing when this ending is earned — the engine's own `checkEnding` is what actually gates it, this is context only. */
+  hint: string;
+}
+
+/** Static, author-time character/scenario depth — never sent to the model verbatim in full; `buildCharacterPrompt`/`buildScenarioBriefing` in scenarios.ts compress this into the bounded prompt fields actually sent over the wire. */
+export interface EntityProfile {
+  identity: string;
+  personality: string;
+  goals: string;
+  fear: string;
+  desire: string;
+  /** The entity's starting stance toward the player. */
+  relationship: string;
+  voice: string;
+}
+
+/**
+ * The model's proposed consequence of one player turn — analogous to
+ * `StateChangeSpec` but proposed by the model and always clamped/validated
+ * by the engine before it can affect `GameState`, never applied as-is.
+ */
+export interface ControlProposal {
+  /** Model's short interpretation of what the player attempted — diagnostics only, never shown to the player, never trusted for anything mechanical. */
+  intent: string;
+  healthDelta: number;
+  tensionDelta: number;
+  trustDelta: number;
+  discoverClue: string | null;
+  gainItem: string | null;
+  consumeItem: string | null;
+  advanceStage: boolean;
+  ending: EndingKind | null;
+  memory: string | null;
+}
+
+export interface ApplyControlResult {
+  state: GameState;
+  snapped: boolean;
+  /** Fields the engine rejected/clamped this turn, for diagnostics — never shown to the player. */
+  corrections: string[];
 }
 
 export interface Scenario {
   id: ScenarioId;
   name: string;
-  /** Compact character prompt (identity, personality, goals, what it knows/wants, what angers/earns trust, speech style) handed to the model. Never the secret itself. */
+  /** Compact character prompt (identity, personality, goals, what it knows/wants, what angers/earns trust, speech style) handed to the model. Never the secret itself. Authored directly, consistent with (but not mechanically derived from) the richer `entity`/`environment`/`objects` fields below. */
   doorPersonality: string;
-  /** Hidden scenario truth — sent to the model as private context so it can roleplay consistently, but instructed never to reveal it directly. Never shown to the player except through a legal outcome's own narration. */
+  /** Hidden scenario truth — sent to the model as private context so it can roleplay consistently, but instructed never to reveal it directly. Never shown to the player except through the model's own narration or a legal outcome's fallback text. */
   secretTruth: string;
-  /** Deterministic opening line shown at run start (no model call needed to start a run). */
+  /** Deterministic opening line shown at run start when offline, or while the model's own opening scene is still streaming in. */
   intro: string;
   startingInventory: string[];
-  startingSuggestions: string[];
   maxTurns: number;
   maxHealth: number;
+
+  // --- Free-form AI game-master protocol (see types.ts module docstring) ---
+  entity: EntityProfile;
+  environment: string;
+  objects: string[];
+  factsKnown: string[];
+  factsRevealable: string[];
+  factsHidden: string[];
+  memoryPriorities: string[];
+  bounds: StateBounds;
+  clueAllowlist: AllowlistEntry[];
+  itemAllowlist: AllowlistEntry[];
+  endings: EndingDef[];
+  /** Engine-side authority on whether a model-proposed ending is currently reachable — the model's `ending` field is only ever a *request*, never a grant. */
+  checkEnding: (state: GameState, kind: EndingKind) => boolean;
+
+  // --- Deterministic path (offline play, and the final safe fallback) ---
   /** Pure function: the full set of outcomes that are legal right now, given scenario progress so far. */
   getLegalOutcomes: (state: GameState) => LegalOutcome[];
   /**
    * Deterministic outcome chooser, used only when no model is available
    * (offline fallback) or as the final safe pick after two invalid model
-   * attempts. Never used while a model is actively narrating.
+   * attempts. Never used while a model is actively narrating a turn.
    */
   chooseDeterministicOutcome: (
     action: ParsedAction,

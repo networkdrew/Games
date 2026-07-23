@@ -1,0 +1,19 @@
+{
+  "name": "AI Dungeon Door — Games",
+  "short_name": "Dungeon Door",
+  "description": "A free-form, AI-narrated chat adventure about whatever waits behind a dungeon door.",
+  "start_url": "/ai-dungeon-door/",
+  "scope": "/ai-dungeon-door/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d0b14",
+  "theme_color": "#0d0b14",
+  "icons": [
+    {
+      "src": "/icons/ai-dungeon-door.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

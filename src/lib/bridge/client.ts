@@ -2,59 +2,106 @@
  * Browser-side client for the local AI Dungeon Door bridge (see bridge/
  * at the repo root and docs/bridge.md). Talks only to a loopback origin,
  * never to LM Studio directly, never to a cloud AI service. Responsible for:
- * - a single lightweight health check (no polling loop)
- * - exactly one in-flight turn request at a time, aborting any previous one
- *   the moment a new action is submitted (or a run resets)
+ * - health/model-state checks (no continuous polling — see useBridgeConnection)
+ * - triggering (and single-flighting) an explicit model load
+ * - exactly one in-flight turn/opening request at a time, aborting any
+ *   previous one the moment a new one is submitted (or a run resets)
  * - real token-by-token streaming: parses the bridge's newline-delimited
  *   JSON event stream as it arrives via a ReadableStream, never buffering
  *   the whole response before "revealing" it
  */
 
 export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:8934";
-const TURN_TIMEOUT_MS = 25_000;
+const TURN_TIMEOUT_MS = 30_000;
 const HEALTH_TIMEOUT_MS = 2_500;
-
-export type BridgeStatus = "unknown" | "checking" | "connected" | "unavailable";
-export type ModelTier = "primary" | "tiny";
+const ENSURE_TIMEOUT_MS = 130_000; // cold-loading a multi-GB model can genuinely take this long
 
 export interface HealthResult {
-  status: "connected" | "unavailable";
-  primaryModelId?: string;
-  tinyModelId?: string;
+  reachable: boolean;
+  installed: boolean;
+  loaded: boolean;
+  alias?: string;
+  modelId?: string;
+  friendlyName?: string;
 }
 
-export interface TurnLegalOutcome {
+export interface EnsureModelResult {
+  ok: boolean;
+  alreadyLoaded?: boolean;
+  modelId?: string;
+  tookMs?: number;
+}
+
+export interface AllowlistEntryWire {
   id: string;
-  description: string;
+  hint: string;
 }
 
-export interface TurnRecentExchange {
+export interface EndingWire {
+  id: string;
+  kind: "WIN" | "LOSS";
+  hint: string;
+}
+
+export interface TurnBoundsWire {
+  healthMagnitude: number;
+  tensionMagnitude: number;
+  trustMagnitude: number;
+}
+
+export interface RecentExchangeWire {
   action: string;
   narration: string;
 }
 
 export interface TurnRequestBody {
-  modelTier: ModelTier;
+  mode: "turn";
   characterPrompt: string;
   secretTruth: string;
+  environment: string;
   stateSummary: string;
-  legalOutcomes: TurnLegalOutcome[];
+  bounds: TurnBoundsWire;
+  clueAllowlist: AllowlistEntryWire[];
+  itemAllowlist: AllowlistEntryWire[];
+  endings: EndingWire[];
   memoryFacts: string[];
-  recentExchanges: TurnRecentExchange[];
+  recentExchanges: RecentExchangeWire[];
   playerAction: string;
+}
+
+export interface OpeningRequestBody {
+  mode: "opening";
+  characterPrompt: string;
+  secretTruth: string;
+  environment: string;
+}
+
+export interface ControlProposalWire {
+  intent: string;
+  healthDelta: number;
+  tensionDelta: number;
+  trustDelta: number;
+  discoverClue: string | null;
+  gainItem: string | null;
+  consumeItem: string | null;
+  advanceStage: boolean;
+  ending: "WIN" | "LOSS" | null;
+  memory: string | null;
 }
 
 export type TurnEvent =
   | { type: "start"; requestId: string }
-  | { type: "model"; modelId: string | null; tier: ModelTier }
+  | { type: "model"; modelId: string | null; alias: string; friendlyName?: string }
+  | { type: "loading" }
   | { type: "delta"; text: string }
   | {
-      type: "outcome";
-      id: string | null;
-      memoryFact?: string | null;
+      type: "control";
+      proposal: ControlProposalWire | null;
       fallback: boolean;
       corrected: boolean;
+      corrections?: string[];
     }
+  | { type: "opening"; ok: boolean; fallback: boolean }
   | { type: "done"; stats: Record<string, unknown> }
   | { type: "error"; message: string };
 
@@ -64,9 +111,8 @@ export interface StreamTurnCallbacks {
 }
 
 export interface StreamTurnResult {
-  outcomeId: string | null;
-  memoryFact: string | null;
-  /** True if the bridge could not produce a valid AI turn (no model, or the model's output failed validation twice) — the caller should fall back to its own deterministic engine. */
+  proposal: ControlProposalWire | null;
+  /** True if the bridge could not produce a valid AI turn (no model installed, or the model's output failed validation twice) — the caller should fall back to its own deterministic engine. */
   fallback: boolean;
   corrected: boolean;
   /** Full narration text accumulated from `delta` events, in order. */
@@ -84,34 +130,67 @@ export class BridgeClient {
     this.baseUrl = baseUrl;
   }
 
-  /** One lightweight GET, used on load and when the player presses "Reconnect" — never polled on an interval. */
+  /** One lightweight GET — the connection state machine calls this, never on a continuous interval once healthy. */
   async checkHealth(): Promise<HealthResult> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
     try {
-      const res = await fetch(`${this.baseUrl}/health`, {
-        signal: controller.signal,
-      });
-      if (!res.ok) return { status: "unavailable" };
+      const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
+      if (!res.ok) return { reachable: false, installed: false, loaded: false };
       const data = (await res.json()) as {
         ok?: boolean;
-        primaryModelId?: string;
-        tinyModelId?: string;
+        installed?: boolean;
+        loaded?: boolean;
+        alias?: string;
+        modelId?: string;
+        friendlyName?: string;
       };
-      if (!data.ok) return { status: "unavailable" };
       return {
-        status: "connected",
-        primaryModelId: data.primaryModelId,
-        tinyModelId: data.tinyModelId,
+        reachable: true,
+        installed: Boolean(data.installed),
+        loaded: Boolean(data.loaded),
+        alias: data.alias,
+        modelId: data.modelId,
+        friendlyName: data.friendlyName,
       };
     } catch {
-      return { status: "unavailable" };
+      return { reachable: false, installed: false, loaded: false };
     } finally {
       clearTimeout(timer);
     }
   }
 
-  /** Cancels any in-flight turn request — used when a run resets, a new action supersedes an old one, or the component unmounts. */
+  /** Triggers (and, bridge-side, single-flights) an explicit model load. Resolves once loaded or failed — this is the "Loading model" state's actual work. */
+  async ensureModel(): Promise<EnsureModelResult> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ENSURE_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${this.baseUrl}/api/dungeon/ensure`, {
+        method: "POST",
+        signal: controller.signal,
+      });
+      if (!res.ok) return { ok: false };
+      return (await res.json()) as EnsureModelResult;
+    } catch {
+      return { ok: false };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Manual "Release local model" advanced-settings action — never called automatically. */
+  async releaseModel(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/dungeon/release`, { method: "POST" });
+      if (!res.ok) return false;
+      const data = (await res.json()) as { ok?: boolean };
+      return Boolean(data.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Cancels any in-flight turn/opening request — used when a run resets, a new action supersedes an old one, or the component unmounts. */
   cancelPending(): void {
     this.inFlight?.abort();
     this.inFlight = null;
@@ -122,14 +201,14 @@ export class BridgeClient {
   }
 
   /**
-   * Streams one dungeon turn. At most one request is ever in flight — a
-   * previous still-pending request is aborted first. Events are delivered
-   * to `callbacks.onEvent` as each NDJSON line arrives off the response's
-   * ReadableStream, so narration renders as the model generates it rather
-   * than all at once at the end.
+   * Streams one dungeon turn or the opening scene. At most one request is
+   * ever in flight — a previous still-pending request is aborted first.
+   * Events are delivered to `callbacks.onEvent` as each NDJSON line arrives
+   * off the response's ReadableStream, so narration renders as the model
+   * generates it rather than all at once at the end.
    */
   async streamTurn(
-    body: TurnRequestBody,
+    body: TurnRequestBody | OpeningRequestBody,
     callbacks: StreamTurnCallbacks = {},
   ): Promise<StreamTurnResult> {
     this.cancelPending();
@@ -138,8 +217,7 @@ export class BridgeClient {
     const timer = setTimeout(() => controller.abort(), TURN_TIMEOUT_MS);
 
     let narration = "";
-    let outcomeId: string | null = null;
-    let memoryFact: string | null = null;
+    let proposal: ControlProposalWire | null = null;
     let fallback = false;
     let corrected = false;
     let stats: Record<string, unknown> | undefined;
@@ -156,11 +234,12 @@ export class BridgeClient {
       callbacks.onEvent?.(event);
       if (event.type === "delta") {
         narration += event.text;
-      } else if (event.type === "outcome") {
-        outcomeId = event.id;
-        memoryFact = event.memoryFact ?? null;
+      } else if (event.type === "control") {
+        proposal = event.proposal;
         fallback = event.fallback;
         corrected = event.corrected;
+      } else if (event.type === "opening") {
+        fallback = event.fallback;
       } else if (event.type === "done") {
         stats = event.stats;
       }
@@ -175,13 +254,7 @@ export class BridgeClient {
       });
 
       if (!res.ok || !res.body) {
-        return {
-          outcomeId: null,
-          memoryFact: null,
-          fallback: true,
-          corrected: false,
-          narration: "",
-        };
+        return { proposal: null, fallback: true, corrected: false, narration: "" };
       }
 
       const reader = res.body.getReader();
@@ -197,25 +270,12 @@ export class BridgeClient {
       }
       if (buffer.trim().length > 0) handleLine(buffer);
 
-      return { outcomeId, memoryFact, fallback, corrected, narration, stats };
+      return { proposal, fallback, corrected, narration, stats };
     } catch {
       if (controller.signal.aborted) {
-        return {
-          outcomeId: null,
-          memoryFact: null,
-          fallback: true,
-          corrected: false,
-          narration,
-          aborted: true,
-        };
+        return { proposal: null, fallback: true, corrected: false, narration, aborted: true };
       }
-      return {
-        outcomeId: null,
-        memoryFact: null,
-        fallback: true,
-        corrected: false,
-        narration,
-      };
+      return { proposal: null, fallback: true, corrected: false, narration };
     } finally {
       clearTimeout(timer);
       if (this.inFlight === controller) this.inFlight = null;

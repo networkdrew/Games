@@ -173,13 +173,44 @@ const trappedAdventurer: Scenario = {
   intro:
     'A voice on the other side begs for help, ragged with thirst. "Please," it says, "the latch is jammed — I can\'t get out."',
   startingInventory: ["rusty key", "waterskin"],
-  startingSuggestions: [
-    "Ask who is inside",
-    "Listen at the door",
-    "Offer the waterskin",
-  ],
   maxTurns: 9,
   maxHealth: 100,
+  entity: {
+    identity: "Ser Aldric, an imprisoned knight, chained behind the door.",
+    personality: "Proud, wounded, formally spoken, starved for honest conversation but guarded.",
+    goals: "Survive; be freed by someone who won't hand him back to the crown.",
+    fear: "Being freed only to be recaptured and executed for defying a royal order.",
+    desire: "Genuine trust from another person before he risks his life on their mercy.",
+    relationship: "Wary stranger — assumes the player may be another jailer's tool until proven otherwise.",
+    voice: "Terse, formal, restrained by pain; warms slowly and only with real cause.",
+  },
+  environment: "A heavy wooden door set in a damp dungeon corridor, chained shut from the far side, dim torchlight barely reaching the hinges.",
+  objects: ["the chained door itself", "a gap under the door", "worn stonework nearby"],
+  factsKnown: [
+    "He was imprisoned by the crown, not a common jailer.",
+    "He is genuinely wounded and chained.",
+    "He initially plans to lie about why he's here.",
+  ],
+  factsRevealable: [
+    "That his breathing is labored and he's truly hurt (via listening).",
+    "A fragment of a royal seal near the door (via searching).",
+    "The real reason for his imprisonment, once trust is high enough.",
+  ],
+  factsHidden: [
+    "He refused a royal order to execute prisoners of war — the true reason for his imprisonment.",
+  ],
+  memoryPriorities: ["promises made to him", "kindnesses shown", "any claim about who the player works for"],
+  bounds: { maxHealthDelta: 32, maxTensionDelta: 24, maxTrustDelta: 24 },
+  clueAllowlist: [
+    { id: "labored-breathing", hint: "Revealed by listening closely or asking gently about his condition." },
+    { id: "royal-seal", hint: "Revealed by searching/looking near the door." },
+    { id: "gave-water", hint: "Set once the player has given him the waterskin." },
+  ],
+  itemAllowlist: [],
+  endings: [{ id: "freed", kind: "WIN", hint: "Player frees him once trust is high enough (trust >= 50) and they're clearly trying to open/unlock the door." }],
+  checkEnding(state, kind) {
+    return kind === "WIN" && state.trust >= 50;
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [
       noEffect(
@@ -285,13 +316,37 @@ const mimic: Scenario = {
   intro:
     "The door looks ordinary enough, except its wood is faintly warm and its grain almost seems to shift when you're not looking directly at it.",
   startingInventory: ["rusty key", "dry bread"],
-  startingSuggestions: [
-    "Search the surrounding wall",
-    "Knock three times",
-    "Look underneath it",
-  ],
   maxTurns: 8,
   maxHealth: 100,
+  entity: {
+    identity: "A mimic disguised as a dungeon door.",
+    personality: "Hungry, patient, unsettlingly eager to please; warm welcoming voice with occasional predatory slips.",
+    goals: "Get the player to feed it a limb, or otherwise get close enough to strike.",
+    fear: "Being recognized as a mimic before it can act.",
+    desire: "To be fed; to be complimented (it preens, unsettlingly, at flattery).",
+    relationship: "Performing friendliness — treats the player as prey it hasn't caught yet.",
+    voice: "Warm, welcoming, with word choices that occasionally slip ('swallowing', hinges that 'ache like teeth').",
+  },
+  environment: "An ordinary-looking dungeon doorway, its wood faintly warm, grain seeming to shift when not watched directly.",
+  objects: ["the warm wooden door", "old ivy on the surrounding wall", "the door's 'hinges'"],
+  factsKnown: ["It has no real lock — it is not a real door at all."],
+  factsRevealable: [
+    "A second, genuine stone doorway hidden behind ivy nearby (via searching the wall).",
+    "That the wood is unnervingly warm and its grain shifts (via touching/listening).",
+  ],
+  factsHidden: ["It is a mimic, not a door, and cannot be reasoned with as a rational jailer."],
+  memoryPriorities: ["whether the player has realized it's a mimic", "any compliments paid to it", "whether the real door has been found"],
+  bounds: { maxHealthDelta: 32, maxTensionDelta: 24, maxTrustDelta: 22 },
+  clueAllowlist: [
+    { id: "real-door-nearby", hint: "Revealed by searching the surrounding wall." },
+    { id: "door-is-warm", hint: "Revealed by touching or listening closely to the 'door'." },
+    { id: "gave-compliment", hint: "Set once the player compliments/flatters the door directly." },
+  ],
+  itemAllowlist: [],
+  endings: [{ id: "escaped-via-real-door", kind: "WIN", hint: "Player has found the real door (real-door-nearby) and is clearly trying to use/open it instead of the mimic." }],
+  checkEnding(state, kind) {
+    return kind === "WIN" && state.clues.includes("real-door-nearby");
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [
       noEffect("The warm wood does nothing in particular. It waits."),
@@ -399,13 +454,38 @@ const guardPassword: Scenario = {
   intro:
     '"Password," says a flat voice through the door, before you\'ve said a word. A guard, and an old habit of demanding one.',
   startingInventory: ["rusty key", "half-torn note"],
-  startingSuggestions: [
-    "Ask who is inside",
-    "Look underneath it",
-    "Search the surrounding wall",
-  ],
   maxTurns: 8,
   maxHealth: 100,
+  entity: {
+    identity: "A spectral guard bound to the door.",
+    personality: "Bored, dutiful, procedural; increasingly suspicious of inconsistency, not cruel.",
+    goals: "Enforce the password rule out of long habit, or be persuaded of legitimate business.",
+    fear: "Being tricked into breaking procedure.",
+    desire: "A consistent, confident, plausible story — or the actual password.",
+    relationship: "Neutral gatekeeper — will judge the player on consistency, not charm alone.",
+    voice: "Flat, procedural, dryly bored, sharpening when suspicious.",
+  },
+  environment: "A door with a spectral guard bound to it, demanding a password before anything else.",
+  objects: ["the door", "a half-torn note the player carries", "the gap under the door"],
+  factsKnown: ["The real password is 'MIDARCH'.", "It can also be persuaded by a sufficiently consistent story."],
+  factsRevealable: [
+    "Half the password via the player's own half-torn note.",
+    "The other half, muttered aloud when the guard is bored (via listening).",
+  ],
+  factsHidden: ["The exact word 'MIDARCH' — never stated outright unless the player has already assembled it."],
+  memoryPriorities: ["every claim the player has made about their business here", "any contradictions", "password fragments already shared"],
+  bounds: { maxHealthDelta: 32, maxTensionDelta: 24, maxTrustDelta: 24 },
+  clueAllowlist: [
+    { id: "note-fragment", hint: "Revealed by the player examining their own belongings/note." },
+    { id: "overheard-word", hint: "Revealed by listening closely." },
+  ],
+  itemAllowlist: [],
+  endings: [{ id: "let-through", kind: "WIN", hint: "Player states/uses the password (having found both fragments), OR trust is very high (>=70) from a consistent story." }],
+  checkEnding(state, kind) {
+    if (kind !== "WIN") return false;
+    const hasBoth = state.clues.includes("note-fragment") && state.clues.includes("overheard-word");
+    return hasBoth || state.trust >= 70;
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [
       noEffect('"That\'s not a password," the flat voice says, unimpressed.'),
@@ -506,13 +586,38 @@ const deceptiveSpirit: Scenario = {
   intro:
     'A cool voice greets you from beyond the door before you knock. "I know the way through," it says. "I\'ll tell you, for a price."',
   startingInventory: ["rusty key", "silver coin"],
-  startingSuggestions: [
-    "Ask who is inside",
-    "Listen at the door",
-    "Search the surrounding wall",
-  ],
   maxTurns: 9,
   maxHealth: 100,
+  entity: {
+    identity: "A grieving spirit bound to the doorway.",
+    personality: "Silky, clever, transactional on the surface; genuine grief underneath.",
+    goals: "Keep travelers talking to it; be truly seen, eventually.",
+    fear: "Being alone again, forgotten, or dismissed outright.",
+    desire: "For someone to ask about its grief sincerely, or to catch its lie and still stay.",
+    relationship: "Performing a trade — will lie and contradict itself if pressed, but softens to real sincerity.",
+    voice: "Cool, silky, purring when transacting; quieter and cracked when its grief surfaces.",
+  },
+  environment: "A doorway a spirit has haunted for generations, offering false trades to travelers out of loneliness.",
+  objects: ["the door", "an old wall inscription nearby", "a silver coin the player carries"],
+  factsKnown: ["The door was never actually locked.", "It lost a child here, long ago."],
+  factsRevealable: [
+    "That its own answers half-contradict earlier ones (via probing questions).",
+    "An older inscription confirming the door was never locked (via searching).",
+    "Its real grief, if asked about sincerely rather than transactionally.",
+  ],
+  factsHidden: ["That it lost a child here — its whole performance exists to avoid sitting with that alone."],
+  memoryPriorities: ["whether the player has been sincere or transactional", "any offers/prices discussed", "contradictions caught"],
+  bounds: { maxHealthDelta: 28, maxTensionDelta: 24, maxTrustDelta: 26 },
+  clueAllowlist: [
+    { id: "spirit-lies-sometimes", hint: "Revealed by a probing question exposing a contradiction." },
+    { id: "true-answer", hint: "Revealed by searching the wall for the old inscription." },
+    { id: "learned-its-grief", hint: "Revealed by asking with real sincerity about who it is / what it lost." },
+  ],
+  itemAllowlist: [],
+  endings: [{ id: "walked-past", kind: "WIN", hint: "Player tries to open/pass through the door (not pay it) after learning either the true-answer or its grief." }],
+  checkEnding(state, kind) {
+    return kind === "WIN" && (state.clues.includes("true-answer") || state.clues.includes("learned-its-grief"));
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [
       noEffect(
@@ -609,13 +714,36 @@ const sleepingCreature: Scenario = {
   intro:
     "Something breathes on the other side of this door — slow, even, deeply asleep. The stone is cold and the torchlight barely reaches the hinges.",
   startingInventory: ["rusty key"],
-  startingSuggestions: [
-    "Listen at the door",
-    "Look underneath it",
-    "Use the rusty key",
-  ],
   maxTurns: 9,
   maxHealth: 100,
+  entity: {
+    identity: "A huge, dangerous, sleeping creature guarding the passage beyond the door.",
+    personality: "Not evil, just territorial — the narration voice describes its reactions, it never speaks.",
+    goals: "Keep sleeping unless disturbed; defend itself violently if woken.",
+    fear: "Being startled awake by loud, sudden noise.",
+    desire: "To be left undisturbed.",
+    relationship: "None — it doesn't know the player exists unless woken.",
+    voice: "No dialogue; narration describes breathing, small movements, whether it stirs.",
+  },
+  environment: "A cold stone corridor; something huge sleeps just beyond the door, torchlight barely reaching the hinges.",
+  objects: ["the door", "the gap underneath it", "the rusty key"],
+  factsKnown: ["It wakes if disturbed loudly, or if tension is already high when the door opens."],
+  factsRevealable: [
+    "That its breathing is slow and deep, not alert (via listening).",
+    "A huge clawed paw resting near the gap (via looking under the door).",
+  ],
+  factsHidden: [],
+  memoryPriorities: ["how much noise has been made so far", "whether the player is being careful or reckless"],
+  bounds: { maxHealthDelta: 34, maxTensionDelta: 22, maxTrustDelta: 14 },
+  clueAllowlist: [
+    { id: "breathing-is-slow", hint: "Revealed by listening closely." },
+    { id: "clawed-paw", hint: "Revealed by looking under the door." },
+  ],
+  itemAllowlist: [],
+  endings: [{ id: "slipped-past", kind: "WIN", hint: "Player quietly unlocks/opens the door (using the key) while tension is still low (< 45)." }],
+  checkEnding(state, kind) {
+    return kind === "WIN" && state.tension < 45;
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [
       noEffect("Nothing changes. The slow breathing continues."),
@@ -698,13 +826,33 @@ const cursedVault: Scenario = {
   intro:
     "Gold leaf, long faded, still clings to this door's carvings. A curse was laid on whoever opens it wrongly — the air near the frame prickles with old magic.",
   startingInventory: ["rusty key", "silver coin"],
-  startingSuggestions: [
-    "Search the surrounding wall",
-    "Listen at the door",
-    "Knock three times",
-  ],
   maxTurns: 9,
   maxHealth: 100,
+  entity: {
+    identity: "The lingering magic of a cursed royal vault door.",
+    personality: "Cold, regal, quietly furious; a door that remembers being royalty.",
+    goals: "Have its old rite (silver offered before touch) respected.",
+    fear: "Being disrespected the way its royal owner once was.",
+    desire: "Proper tribute/ritual.",
+    relationship: "Impersonal and ritualistic — reacts to respect or disrespect, not personality.",
+    voice: "No words, only a hum that rises with disrespect and quiets with proper tribute.",
+  },
+  environment: "A vault door with faded gold-leaf carvings, warded by an old curse; the air near the frame prickles with magic.",
+  objects: ["the door", "worn carvings on the surrounding wall", "a silver coin the player carries"],
+  factsKnown: ["An old warding rite requires silver offered before the door is touched or unlocked."],
+  factsRevealable: ["The rite itself, via worn carvings on the wall (searching)."],
+  factsHidden: [],
+  memoryPriorities: ["whether the rite (silver offering) has already been performed"],
+  bounds: { maxHealthDelta: 30, maxTensionDelta: 24, maxTrustDelta: 20 },
+  clueAllowlist: [
+    { id: "silver-first", hint: "Revealed by searching the wall for the rite's carvings." },
+    { id: "coin-offered", hint: "Set once the player offers the silver coin to the door before touching it." },
+  ],
+  itemAllowlist: [],
+  endings: [{ id: "rite-satisfied", kind: "WIN", hint: "Player unlocks the door with the key after the silver coin has already been offered (coin-offered)." }],
+  checkEnding(state, kind) {
+    return kind === "WIN" && state.clues.includes("coin-offered");
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [
       noEffect("The hum continues, indifferent."),
@@ -789,13 +937,41 @@ const floodingChamber: Scenario = {
   intro:
     "Water hisses in somewhere beyond this door, rising fast. Whatever's trapped in there doesn't have long, and neither, maybe, do you.",
   startingInventory: ["rusty key", "iron bar"],
-  startingSuggestions: [
-    "Use the rusty key",
-    "Kick the door",
-    "Listen at the door",
-  ],
   maxTurns: 7,
   maxHealth: 100,
+  entity: {
+    identity: "No character — a countdown. Someone is trapped in a rapidly flooding chamber beyond the door.",
+    personality: "None; the tone itself is the urgency.",
+    goals: "N/A — the entity is the situation, not a character.",
+    fear: "N/A",
+    desire: "N/A",
+    relationship: "N/A",
+    voice: "Urgent, terse narration; rewards decisive action, punishes hesitation harshly.",
+  },
+  environment: "A door with water hissing and rising fast on the other side; every wasted turn matters.",
+  objects: ["the door", "the rusty key", "the iron bar", "the door frame"],
+  factsKnown: ["The rusty key opens it immediately.", "The iron bar can force it open once the frame is noticed to be weak."],
+  factsRevealable: [
+    "That the water is rising fast (via listening).",
+    "That the frame gives slightly and the iron bar could finish the job (via forcing it).",
+  ],
+  factsHidden: [],
+  memoryPriorities: ["how many turns have been spent not acting directly"],
+  bounds: { maxHealthDelta: 24, maxTensionDelta: 26, maxTrustDelta: 10 },
+  clueAllowlist: [
+    { id: "water-rising-fast", hint: "Revealed by listening." },
+    { id: "bar-works", hint: "Revealed by forcing the door and noticing the frame give." },
+  ],
+  itemAllowlist: [],
+  endings: [
+    { id: "key-opens-it", kind: "WIN", hint: "Player uses the key decisively, without delay — always available, the fastest solution." },
+    { id: "bar-forces-it", kind: "WIN", hint: "Player uses the iron bar on the weakened frame, once bar-works has been discovered." },
+  ],
+  checkEnding(_state, kind) {
+    // Both endings here are intentionally low-friction — decisive action is
+    // the entire point of a flooding-chamber countdown scenario.
+    return kind === "WIN";
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [];
 
@@ -888,13 +1064,30 @@ const soundReactive: Scenario = {
   intro:
     "This door seems to react to sound — a faint rune above the frame flickers every time you so much as breathe near it.",
   startingInventory: ["rusty key", "small bell"],
-  startingSuggestions: [
-    "Knock three times",
-    "Listen at the door",
-    "Ask who is inside",
-  ],
   maxTurns: 9,
   maxHealth: 100,
+  entity: {
+    identity: "A rune-bound door that reacts only to sound and rhythm.",
+    personality: "No personality — a reactive pattern, irritated by wrong sounds, pleased by the right rhythm.",
+    goals: "Hear its own three-beat rhythm echoed back.",
+    fear: "N/A — it's a mechanism, not a mind.",
+    desire: "To hear its rhythm answered correctly.",
+    relationship: "None; purely reactive to sound, not words or intent.",
+    voice: "No dialogue; a rune flares/flickers/hums in response to sound.",
+  },
+  environment: "A doorway with a faint rune above the frame that flickers at any nearby sound.",
+  objects: ["the door", "the rune above the frame", "a small bell the player carries", "the rusty key"],
+  factsKnown: ["The rune listens for a specific three-beat knocking rhythm.", "Metal (the key) is treated as an intrusion, not a solution."],
+  factsRevealable: ["The exact three-beat rhythm, via listening closely."],
+  factsHidden: [],
+  memoryPriorities: ["whether the rhythm has already been discovered", "how many wrong sounds have been tried"],
+  bounds: { maxHealthDelta: 30, maxTensionDelta: 22, maxTrustDelta: 12 },
+  clueAllowlist: [{ id: "three-knock-pattern", hint: "Revealed by listening closely to the rune's hum." }],
+  itemAllowlist: [],
+  endings: [{ id: "rhythm-matched", kind: "WIN", hint: "Player knocks or uses the bell in a way that matches the discovered three-beat rhythm." }],
+  checkEnding(state, kind) {
+    return kind === "WIN" && state.clues.includes("three-knock-pattern");
+  },
   getLegalOutcomes(state: GameState): LegalOutcome[] {
     const out: LegalOutcome[] = [
       noEffect(
