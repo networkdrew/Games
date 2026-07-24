@@ -1,60 +1,50 @@
 # AI People's Court architecture
 
-## Overview
-
-AI People's Court is a complete browser game within the existing Astro Games
-portal. It uses the shared full-screen shell but has no runtime service or
-model dependency.
-
 ```text
-registry metadata
-  -> /ai-peoples-court/ Astro route
-    -> shared GameLayout
-      -> AIPeoplesCourtGame React island
-        -> code-owned case library + deterministic court engine
+human judge
+  -> React chat island
+    -> fixed POST /api/court/turn contract
+      -> loopback OpenGames bridge
+        -> local LM Studio model as bounded ensemble cast
 ```
 
-## Files
+## Authority boundaries
 
-- `src/lib/games/registry.ts` is the discovery and homepage source of truth.
-- `src/pages/ai-peoples-court/index.astro` owns the canonical route and
-  structured game metadata.
-- `src/games/ai-peoples-court/AIPeoplesCourtGame.tsx` renders and coordinates
-  the hearing.
-- `src/games/ai-peoples-court/logic/types.ts` defines the court domain.
-- `src/games/ai-peoples-court/logic/cases.ts` contains immutable fictional
-  case records.
-- `src/games/ai-peoples-court/logic/engine.ts` validates record actions,
-  finalizes verdicts, and calculates scores.
-- `src/styles/global.css` contains court visuals under the
-  `.peoples-court` scope.
+Code owns:
 
-## State model
+- fictional case truth, exhibits, cast, and private knowledge;
+- valid speaker identities and phases;
+- transcript and memory limits;
+- interruption scheduling;
+- the human judge's words and verdict.
 
-The React island owns a `CourtSession`:
+The local model owns:
 
-- current case id;
-- inspected exhibit ids;
-- asked question ids;
-- the player's final verdict;
-- the resulting score.
+- in-character dialogue;
+- which permitted character responds;
+- natural reactions, objections, and allowed interruptions;
+- a proposed rolling summary and durable continuity fact.
 
-The pure engine validates exhibit and question ids against the active case.
-It ignores unknown ids and duplicate actions. Once entered, a verdict is
-immutable for that session. Calling the next case creates a fresh session and
-cycles through the case library.
+The bridge never accepts an arbitrary system prompt, model id, upstream URL,
+or speaker identity. It validates a bounded court request, builds the prompts
+server-side, parses a fixed response protocol, and emits NDJSON events. Model
+memory metadata is sent as a hidden `memory` event; player-facing lines are
+separate `message` events.
 
-Scoring rewards review coverage, questioning coverage, preparation, and an
-evidence-supported verdict. The explanatory ruling is revealed only after the
-player decides.
+## Browser state
 
-## Permanent boundaries
+`CourtSession` stores the current case id, visible transcript, rolling summary,
+durable facts, turn number, and final verdict. A new case creates a fresh
+session. Recent transcript is deliberately clipped before each request; the
+rolling summary preserves older continuity without unbounded context growth.
 
-- All cases and parties are fictional.
-- The player, never a model, controls the verdict.
-- Case truth, evidence, procedure, and scoring remain code-owned.
-- The court game does not call the Dungeon bridge or LM Studio.
-- The game remains playable offline after its static assets load.
-- It reuses the registry, `GameLayout`, `GameAppShell`, React, Tailwind, Zod,
-  Vitest, and the static Cloudflare deployment.
-- Court styles remain scoped and do not affect AI Dungeon Door.
+## Bridge integration
+
+The court reuses the existing health check, exact model resolution, explicit
+LM Studio load, origin allowlist, loopback binding, rate limit, cancellation,
+and one-generation-at-a-time rule. Court routes are:
+
+- `POST /api/court/ensure`
+- `POST /api/court/turn`
+
+Dungeon endpoints and behavior remain intact.

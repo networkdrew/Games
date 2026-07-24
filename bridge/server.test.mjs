@@ -102,6 +102,36 @@ const BASE_OPENING_BODY = {
   environment: "A cold stone corridor.",
 };
 
+const BASE_COURT_BODY = {
+  caseId: "orchid-window",
+  caseTitle: "The Orchid and the Open Window",
+  publicBrief: "A frozen orchid dispute.",
+  privateTruth: "Ellis opened the window and forgot it.",
+  participants: [
+    {
+      id: "plaintiff",
+      name: "Mara Venn",
+      role: "Plaintiff",
+      voice: "precise",
+      privateKnowledge: "Her instructions were incomplete.",
+    },
+    {
+      id: "defendant",
+      name: "Ellis Rowe",
+      role: "Defendant",
+      voice: "defensive",
+      privateKnowledge: "Ellis opened the window.",
+    },
+  ],
+  phase: "hearing",
+  turnNumber: 1,
+  allowInterruptions: true,
+  playerMessage: "Who opened the window?",
+  memorySummary: "The case has been called.",
+  memoryFacts: [],
+  recentMessages: [],
+};
+
 test("health reports installed+loaded", async () => {
   await withServer({}, async (baseUrl) => {
     const res = await fetch(`${baseUrl}/health`);
@@ -121,6 +151,46 @@ test("health reports not installed when the alias can't be resolved", async () =
     assert.equal(data.ok, false);
     assert.equal(data.installed, false);
   });
+});
+
+test("court turn returns individual speakers and hidden memory", async () => {
+  await withServer(
+    {
+      streamChatCompletion: async () => ({
+        text: [
+          "MEMORY: Ellis admitted opening the window after watering.",
+          "FACT: Ellis admits opening the window.",
+          "MESSAGES:",
+          "[defendant] I opened it because the room smelled damp.",
+          "[plaintiff] And you left it open all night.",
+        ].join("\n"),
+        firstTokenMs: 8,
+        totalMs: 40,
+        chunks: 4,
+      }),
+    },
+    async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/court/turn`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+        body: JSON.stringify(BASE_COURT_BODY),
+      });
+      assert.equal(res.status, 200);
+      const events = await readNdjson(res);
+      assert.equal(
+        events.filter((event) => event.type === "message").length,
+        2,
+      );
+      assert.equal(
+        events.find((event) => event.type === "memory").fact,
+        "Ellis admits opening the window.",
+      );
+      assert.equal(
+        events.find((event) => event.type === "message").speaker,
+        "defendant",
+      );
+    },
+  );
 });
 
 test("turn: streams narration and a valid control proposal on success", async () => {

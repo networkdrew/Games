@@ -50,6 +50,12 @@ import {
   textAfterResponseMarker,
 } from "./protocol.mjs";
 import {
+  buildCourtCorrectionPrompt,
+  buildCourtSystemPrompt,
+  buildCourtUserPrompt,
+  parseCourtResponse,
+} from "./court-protocol.mjs";
+import {
   chatCompletionOnce,
   ensureModelLoaded,
   getModelState,
@@ -218,6 +224,70 @@ function validateOpeningBody(body) {
   return validateCommonFields(body);
 }
 
+function validateCourtBody(body) {
+  if (typeof body !== "object" || body === null) return "invalid body";
+  if (!isNonEmptyString(body.caseId, 80)) return "invalid caseId";
+  if (!isNonEmptyString(body.caseTitle, 160)) return "invalid caseTitle";
+  if (!isNonEmptyString(body.publicBrief, MAX_FIELD_LENGTH))
+    return "invalid publicBrief";
+  if (!isNonEmptyString(body.privateTruth, MAX_FIELD_LENGTH))
+    return "invalid privateTruth";
+  if (!isNonEmptyString(body.playerMessage, MAX_PLAYER_ACTION_LENGTH))
+    return "invalid playerMessage";
+  if (
+    !["opening", "hearing", "deliberation"].includes(body.phase) ||
+    !Number.isInteger(body.turnNumber) ||
+    body.turnNumber < 0 ||
+    body.turnNumber > 100
+  )
+    return "invalid court state";
+  if (typeof body.allowInterruptions !== "boolean")
+    return "invalid allowInterruptions";
+  if (typeof body.memorySummary !== "string" || body.memorySummary.length > 800)
+    return "invalid memorySummary";
+  if (
+    !Array.isArray(body.memoryFacts) ||
+    body.memoryFacts.length > MAX_MEMORY_FACTS ||
+    body.memoryFacts.some(
+      (fact) =>
+        typeof fact !== "string" || fact.length > MAX_MEMORY_FACT_LENGTH,
+    )
+  )
+    return "invalid memoryFacts";
+  if (
+    !Array.isArray(body.participants) ||
+    body.participants.length < 2 ||
+    body.participants.length > 5
+  )
+    return "invalid participants";
+  for (const person of body.participants) {
+    if (
+      typeof person !== "object" ||
+      person === null ||
+      !["bailiff", "clerk", "plaintiff", "defendant", "witness"].includes(
+        person.id,
+      ) ||
+      !isNonEmptyString(person.name, 80) ||
+      !isNonEmptyString(person.role, 100) ||
+      !isNonEmptyString(person.voice, 240) ||
+      !isNonEmptyString(person.privateKnowledge, 500)
+    )
+      return "invalid participant";
+  }
+  if (!Array.isArray(body.recentMessages) || body.recentMessages.length > 12)
+    return "invalid recentMessages";
+  for (const message of body.recentMessages) {
+    if (
+      typeof message !== "object" ||
+      message === null ||
+      !isNonEmptyString(message.name, 80) ||
+      !isNonEmptyString(message.text, MAX_EXCHANGE_FIELD_LENGTH)
+    )
+      return "invalid recent message";
+  }
+  return null;
+}
+
 function writeEvent(res, event) {
   if (res.writableEnded || res.destroyed) return;
   res.write(JSON.stringify(event) + "\n");
@@ -239,6 +309,135 @@ export function createRequestHandler(
 ) {
   let lastRequestAt = 0;
   let busy = false;
+
+  async function handleCourtTurn(req, res, origin) {
+    let raw;
+    try {
+      raw = await readBody(req, MAX_BODY_BYTES);
+    } catch {
+      sendJson(res, 413, origin, { ok: false, error: "payload too large" });
+      return;
+    }
+
+    let body;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      sendJson(res, 400, origin, { ok: false, error: "invalid JSON" });
+      return;
+    }
+    const validationError = validateCourtBody(body);
+    if (validationError) {
+      sendJson(res, 400, origin, { ok: false, error: validationError });
+      return;
+    }
+    if (busy) {
+      sendJson(res, 429, origin, { ok: false, error: "busy" });
+      return;
+    }
+    const now = Date.now();
+    if (now - lastRequestAt < MIN_REQUEST_INTERVAL_MS) {
+      sendJson(res, 429, origin, { ok: false, error: "rate limited" });
+      return;
+    }
+
+    busy = true;
+    lastRequestAt = now;
+    const requestId = randomUUID().slice(0, 8);
+    const abortController = new AbortController();
+    req.on("close", () => abortController.abort());
+    res.writeHead(200, {
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-cache",
+      ...corsHeaders(origin),
+    });
+
+    try {
+      writeEvent(res, { type: "start", requestId });
+      const config = await deps.resolveAlias(MODEL_ALIAS);
+      if (!config) {
+        writeEvent(res, { type: "unavailable", reason: "model-not-installed" });
+        writeEvent(res, { type: "done", stats: { fallback: true } });
+        res.end();
+        return;
+      }
+      writeEvent(res, {
+        type: "model",
+        modelId: config.lmStudioId,
+        alias: MODEL_ALIAS,
+        friendlyName: friendlyModelName(config.lmStudioId),
+      });
+      if ((await deps.getModelState(config.lmStudioId)) !== "loaded") {
+        writeEvent(res, { type: "loading" });
+        await deps.ensureModelLoaded(config);
+      }
+
+      const systemPrompt = buildCourtSystemPrompt();
+      const userPrompt = buildCourtUserPrompt(body);
+      const generation = await deps.streamChatCompletion({
+        modelId: config.lmStudioId,
+        systemPrompt,
+        userPrompt,
+        maxTokens: config.maxTokens,
+        temperature: config.temperature,
+        topP: config.topP,
+        stop: config.stopSequences,
+        reasoningDisableParams: config.reasoningDisableParams,
+        signal: abortController.signal,
+      });
+
+      let parsed = parseCourtResponse(generation.text);
+      let corrected = false;
+      if (!parsed && generation.text) {
+        const correction = await deps.chatCompletionOnce({
+          modelId: config.lmStudioId,
+          systemPrompt,
+          userPrompt: buildCourtCorrectionPrompt(generation.text),
+          maxTokens: config.maxTokens,
+          temperature: 0.4,
+          topP: config.topP,
+          stop: config.stopSequences,
+          reasoningDisableParams: config.reasoningDisableParams,
+        });
+        parsed = parseCourtResponse(correction);
+        corrected = parsed !== null;
+      }
+
+      if (!parsed) {
+        writeEvent(res, { type: "unavailable", reason: "invalid-response" });
+      } else {
+        writeEvent(res, {
+          type: "memory",
+          summary: parsed.memorySummary,
+          fact: parsed.memoryFact,
+        });
+        for (const message of parsed.messages) {
+          writeEvent(res, { type: "message", ...message });
+        }
+      }
+      writeEvent(res, {
+        type: "done",
+        stats: {
+          fallback: parsed === null,
+          corrected,
+          firstTokenMs: generation.firstTokenMs,
+          totalMs: generation.totalMs,
+          chunks: generation.chunks,
+        },
+      });
+      res.end();
+    } catch (err) {
+      console.log(
+        `[court:${requestId}] error: ${err instanceof Error ? err.message : "unknown"}`,
+      );
+      if (!res.writableEnded) {
+        writeEvent(res, { type: "error", message: "internal error" });
+        res.end();
+      }
+    } finally {
+      busy = false;
+    }
+  }
 
   async function handleTurnOrOpening(req, res, origin) {
     let raw;
@@ -548,6 +747,7 @@ export function createRequestHandler(
         ok: true,
         installed: true,
         loaded: state === "loaded",
+        capabilities: ["dungeon-chat", "court-chat"],
         alias: MODEL_ALIAS,
         modelId: config.lmStudioId,
         friendlyName: friendlyModelName(config.lmStudioId),
@@ -555,7 +755,10 @@ export function createRequestHandler(
       return;
     }
 
-    if (req.method === "POST" && url.pathname === "/api/dungeon/ensure") {
+    if (
+      req.method === "POST" &&
+      ["/api/dungeon/ensure", "/api/court/ensure"].includes(url.pathname)
+    ) {
       const config = await deps.resolveAlias(MODEL_ALIAS);
       if (!config) {
         sendJson(res, 200, origin, { ok: false, error: "model not installed" });
@@ -599,6 +802,11 @@ export function createRequestHandler(
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/court/turn") {
+      await handleCourtTurn(req, res, origin);
+      return;
+    }
+
     sendJson(res, 404, origin, { ok: false, error: "not found" });
   };
 }
@@ -606,7 +814,9 @@ export function createRequestHandler(
 export function startServer() {
   const server = createServer(createRequestHandler());
   server.listen(PORT, HOST, () => {
-    console.log(`AI Dungeon Door bridge listening on http://${HOST}:${PORT}`);
+    console.log(
+      `OpenGames local AI bridge listening on http://${HOST}:${PORT}`,
+    );
     console.log("Bound to loopback only — not reachable from other devices.");
   });
 

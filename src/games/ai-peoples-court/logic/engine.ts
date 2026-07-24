@@ -1,5 +1,10 @@
 import { courtCases, getCourtCase } from "./cases";
-import type { CourtSession, PartySide } from "./types";
+import type {
+  CourtSession,
+  CourtSpeaker,
+  PartySide,
+  TranscriptMessage,
+} from "./types";
 
 export function createCourtSession(caseIndex = 0): CourtSession {
   const normalizedIndex =
@@ -8,38 +13,66 @@ export function createCourtSession(caseIndex = 0): CourtSession {
   if (!courtCase) throw new Error("AI People's Court has no cases");
   return {
     caseId: courtCase.id,
-    inspectedEvidence: [],
-    askedQuestions: [],
+    transcript: [],
+    memorySummary: "",
+    memoryFacts: [],
+    turnNumber: 0,
     verdict: null,
-    score: null,
   };
 }
 
-export function inspectEvidence(
+export function addTranscriptMessage(
   session: CourtSession,
-  evidenceId: string,
+  message: Omit<TranscriptMessage, "id">,
 ): CourtSession {
-  const courtCase = getCourtCase(session.caseId);
-  if (!courtCase.evidence.some((item) => item.id === evidenceId))
-    return session;
-  if (session.inspectedEvidence.includes(evidenceId)) return session;
   return {
     ...session,
-    inspectedEvidence: [...session.inspectedEvidence, evidenceId],
+    transcript: [
+      ...session.transcript,
+      {
+        ...message,
+        id: `${session.turnNumber}-${session.transcript.length}-${message.speaker}`,
+      },
+    ],
   };
 }
 
-export function askCourtQuestion(
+export function addJudgeMessage(
   session: CourtSession,
-  questionId: string,
+  text: string,
 ): CourtSession {
-  const courtCase = getCourtCase(session.caseId);
-  if (!courtCase.questions.some((item) => item.id === questionId))
-    return session;
-  if (session.askedQuestions.includes(questionId)) return session;
+  return addTranscriptMessage(session, {
+    speaker: "judge",
+    name: "You, Presiding Judge",
+    text,
+  });
+}
+
+export function applySimulatedTurn(
+  session: CourtSession,
+  messages: readonly {
+    speaker: Exclude<CourtSpeaker, "judge">;
+    name: string;
+    text: string;
+  }[],
+  memorySummary: string,
+  memoryFact: string | null,
+): CourtSession {
+  let next = session;
+  messages.forEach((message, index) => {
+    next = addTranscriptMessage(next, {
+      ...message,
+      interrupted: index > 0,
+    });
+  });
   return {
-    ...session,
-    askedQuestions: [...session.askedQuestions, questionId],
+    ...next,
+    memorySummary,
+    memoryFacts:
+      memoryFact && !next.memoryFacts.includes(memoryFact)
+        ? [...next.memoryFacts, memoryFact].slice(-8)
+        : next.memoryFacts,
+    turnNumber: session.turnNumber + 1,
   };
 }
 
@@ -48,23 +81,6 @@ export function deliverVerdict(
   verdict: PartySide,
 ): CourtSession {
   if (session.verdict) return session;
-  const courtCase = getCourtCase(session.caseId);
-  const evidencePoints = Math.round(
-    (session.inspectedEvidence.length / courtCase.evidence.length) * 25,
-  );
-  const questionPoints = Math.round(
-    (session.askedQuestions.length / courtCase.questions.length) * 15,
-  );
-  const preparationBonus =
-    session.inspectedEvidence.length === courtCase.evidence.length &&
-    session.askedQuestions.length >= 2
-      ? 10
-      : 0;
-  const accuracyPoints = verdict === courtCase.correctVerdict ? 50 : 0;
-
-  return {
-    ...session,
-    verdict,
-    score: accuracyPoints + evidencePoints + questionPoints + preparationBonus,
-  };
+  getCourtCase(session.caseId);
+  return { ...session, verdict };
 }

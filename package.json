@@ -24,7 +24,8 @@
     "deploy": "npm run build && wrangler deploy",
     "bridge": "node bridge/server.mjs",
     "bridge:test": "node --test bridge/*.test.mjs",
-    "play": "powershell -ExecutionPolicy Bypass -File \"./Start-AIDungeonDoor.ps1\""
+    "play": "powershell -ExecutionPolicy Bypass -File \"./Start-AIDungeonDoor.ps1\"",
+    "court:play": "powershell -ExecutionPolicy Bypass -File \"./Start-AIPeoplesCourt.ps1\""
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.1.4",

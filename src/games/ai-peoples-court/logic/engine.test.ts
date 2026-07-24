@@ -1,38 +1,44 @@
 import { describe, expect, it } from "vitest";
 import {
-  askCourtQuestion,
+  addJudgeMessage,
+  applySimulatedTurn,
   createCourtSession,
   deliverVerdict,
-  inspectEvidence,
 } from "./engine";
 
 describe("court engine", () => {
-  it("keeps evidence and question progress code-owned", () => {
-    const session = createCourtSession(0);
-    const withEvidence = inspectEvidence(session, "care-card");
-    const withQuestion = askCourtQuestion(withEvidence, "ellis-window");
+  it("keeps a rolling transcript and durable memory ledger", () => {
+    let session = createCourtSession(0);
+    session = addJudgeMessage(session, "Call the plaintiff.");
+    session = applySimulatedTurn(
+      session,
+      [
+        {
+          speaker: "plaintiff",
+          name: "Mara Venn",
+          text: "I am ready, Your Honor.",
+        },
+        {
+          speaker: "defendant",
+          name: "Ellis Rowe",
+          text: "I object to that characterization.",
+        },
+      ],
+      "The judge called Mara; Ellis reacted.",
+      "Ellis objected before a question was asked.",
+    );
 
-    expect(withQuestion.inspectedEvidence).toEqual(["care-card"]);
-    expect(withQuestion.askedQuestions).toEqual(["ellis-window"]);
-    expect(inspectEvidence(withQuestion, "not-an-exhibit")).toBe(withQuestion);
+    expect(session.transcript).toHaveLength(3);
+    expect(session.transcript[2]?.interrupted).toBe(true);
+    expect(session.memoryFacts).toEqual([
+      "Ellis objected before a question was asked.",
+    ]);
+    expect(session.turnNumber).toBe(1);
   });
 
-  it("scores an accurate and fully prepared verdict at 100", () => {
-    let session = createCourtSession(0);
-    for (const id of ["care-card", "weather-log", "message"]) {
-      session = inspectEvidence(session, id);
-    }
-    for (const id of [
-      "mara-instructions",
-      "mara-value",
-      "ellis-window",
-      "ellis-warning",
-    ]) {
-      session = askCourtQuestion(session, id);
-    }
-
+  it("makes the human verdict final", () => {
+    const session = createCourtSession(0);
     const decided = deliverVerdict(session, "plaintiff");
-    expect(decided.score).toBe(100);
     expect(decided.verdict).toBe("plaintiff");
     expect(deliverVerdict(decided, "defendant")).toBe(decided);
   });

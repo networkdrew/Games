@@ -2,36 +2,40 @@
 
 ## Current status
 
-**Complete and playable.**
+AI People's Court is a local-LLM chat simulation. The human player presides as
+judge and can address anyone in free text, call the witness, manage order, and
+deliver the final verdict.
 
-The route at `/ai-peoples-court/` contains three original fictional civil
-cases. A player can read both opening statements, inspect exhibits, question
-each party, deliver a verdict, receive a preparation/accuracy score, and call
-the next case.
+The local model performs a cast with separate identities:
 
-## Gameplay ownership
+- bailiff and clerk;
+- plaintiff and defendant;
+- one case-specific witness.
 
-- Case facts and supporting rulings are authored in
-  `src/games/ai-peoples-court/logic/cases.ts`.
-- Investigation progress, verdict finality, and scoring are controlled by
-  the pure engine in `logic/engine.ts`.
-- The human player always chooses the verdict.
-- No network, local bridge, LM Studio process, cloud service, or paid API is
-  required. The game is classified as a browser game in the site registry.
-- Every person, company, event, and dispute in the case library is fictional.
+The model can produce a natural follow-up or interruption on selected turns.
+Generated messages are labeled and rendered individually in the transcript.
 
-## Site integration
+## Continuity
 
-- The game is registered as playable and featured in
-  `src/lib/games/registry.ts`.
-- The registry drives its homepage card, simulation category, tags, play
-  time, and canonical `/ai-peoples-court/` route.
-- `src/pages/ai-peoples-court/index.astro` mounts the React game through the
-  shared `GameLayout` and `GameAppShell`.
-- Court-specific responsive styles are scoped under `.peoples-court`.
+Each request includes three memory layers:
 
-## Verification
+1. immutable code-authored case truth and each character's private knowledge;
+2. a compact rolling summary and up to eight durable testimony facts;
+3. the ten most recent visible transcript messages.
 
-Component tests cover the initial case, evidence review, questioning, verdict,
-result, and next-case flow. Pure engine tests cover immutable record progress,
-invalid exhibit rejection, verdict finality, and full-score calculation.
+The bridge hides memory metadata from the player-facing chat, rejects unknown
+speaker identities, prevents the model from speaking as the judge, and retries
+one malformed response. The player and code remain authoritative over the
+verdict.
+
+## Runtime
+
+The game requires the same local stack as AI Dungeon Door:
+
+- LM Studio's local server;
+- the single loopback OpenGames bridge on `127.0.0.1:8934`;
+- the configured local model.
+
+There is no cloud AI or paid API. Launch with `npm run court:play` or
+`Start AI Peoples Court.bat`. If the local cast is unavailable, the interface
+reports that truthfully and does not substitute fake scripted dialogue.

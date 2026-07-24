@@ -4,6 +4,15 @@ export interface CourtParty {
   name: string;
   role: string;
   opening: string;
+  voice: string;
+  privateKnowledge: string;
+}
+
+export interface CourtWitness {
+  name: string;
+  role: string;
+  voice: string;
+  privateKnowledge: string;
 }
 
 export interface EvidenceItem {
@@ -27,8 +36,10 @@ export interface CourtCase {
   title: string;
   claim: string;
   stakes: string;
+  privateTruth: string;
   plaintiff: CourtParty;
   defendant: CourtParty;
+  witness: CourtWitness;
   evidence: readonly EvidenceItem[];
   questions: readonly CourtQuestion[];
   correctVerdict: PartySide;
@@ -37,8 +48,20 @@ export interface CourtCase {
 
 export interface CourtSession {
   caseId: string;
-  inspectedEvidence: readonly string[];
-  askedQuestions: readonly string[];
+  transcript: readonly TranscriptMessage[];
+  memorySummary: string;
+  memoryFacts: readonly string[];
+  turnNumber: number;
   verdict: PartySide | null;
-  score: number | null;
+}
+
+export type CourtSpeaker =
+  "judge" | "bailiff" | "clerk" | "plaintiff" | "defendant" | "witness";
+
+export interface TranscriptMessage {
+  id: string;
+  speaker: CourtSpeaker;
+  name: string;
+  text: string;
+  interrupted?: boolean;
 }

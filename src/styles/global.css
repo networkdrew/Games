@@ -548,3 +548,106 @@
   color: var(--court-ink-soft);
   background: var(--court-paper-muted);
 }
+
+.peoples-court .court-connection {
+  color: var(--court-ink-soft);
+}
+
+.peoples-court .courtroom-rule {
+  color: var(--court-ink);
+  background: #d8b66e;
+}
+
+.peoples-court .courtroom-rule:hover {
+  background: #e7ca8c;
+}
+
+.peoples-court .courtroom-verdict-bar,
+.peoples-court .courtroom-composer {
+  border-color: var(--court-line);
+  color: var(--court-ink);
+  background: var(--court-paper);
+}
+
+.peoples-court .court-transcript {
+  background:
+    linear-gradient(rgb(251 247 238 / 0.94), rgb(251 247 238 / 0.94)),
+    repeating-linear-gradient(
+      transparent 0,
+      transparent 2rem,
+      rgb(49 66 96 / 0.08) 2rem,
+      rgb(49 66 96 / 0.08) 2.05rem
+    );
+}
+
+.peoples-court .court-chat {
+  border-color: var(--court-line);
+  color: var(--court-ink);
+  background: #fffdf8;
+  box-shadow: 0 0.25rem 0.8rem rgb(23 35 60 / 0.08);
+}
+
+.peoples-court .court-chat--judge {
+  margin-left: clamp(1rem, 8vw, 5rem);
+  border-color: #9a7a3c;
+  background: #f1e5cb;
+}
+
+.peoples-court .court-chat--plaintiff {
+  margin-right: clamp(0.5rem, 4vw, 2.5rem);
+  border-left: 0.25rem solid #4e709a;
+}
+
+.peoples-court .court-chat--defendant {
+  margin-left: clamp(0.5rem, 4vw, 2.5rem);
+  border-left: 0.25rem solid #8f5b49;
+}
+
+.peoples-court .court-chat--witness {
+  margin-right: clamp(0.25rem, 2vw, 1.25rem);
+  margin-left: clamp(0.25rem, 2vw, 1.25rem);
+  border-left: 0.25rem solid #5f7955;
+}
+
+.peoples-court .court-chat--official {
+  border-style: dashed;
+  background: var(--court-paper-muted);
+}
+
+.peoples-court .court-interrupt {
+  color: #7d2e21;
+  background: #f5d8d1;
+}
+
+.peoples-court .court-typing,
+.peoples-court .court-offline {
+  border-color: var(--court-line);
+  color: var(--court-ink-soft);
+  background: var(--court-paper-muted);
+}
+
+.peoples-court .court-typing span {
+  background: var(--court-brass);
+}
+
+.peoples-court .court-prompt {
+  border-color: var(--court-line);
+  color: var(--court-ink-soft);
+  background: #fffdf8;
+}
+
+.peoples-court .court-prompt:hover {
+  border-color: var(--court-brass);
+  color: var(--court-ink);
+}
+
+.peoples-court .court-input {
+  border-color: var(--court-line);
+  color: var(--court-ink);
+  background: #fffdf8;
+}
+
+.peoples-court .court-input:focus {
+  border-color: var(--court-brass);
+  outline: 2px solid rgb(169 121 43 / 0.22);
+}

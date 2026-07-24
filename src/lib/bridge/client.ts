@@ -20,6 +20,7 @@ export interface HealthResult {
   reachable: boolean;
   installed: boolean;
   loaded: boolean;
+  capabilities?: string[];
   alias?: string;
   modelId?: string;
   friendlyName?: string;
@@ -151,6 +152,7 @@ export class BridgeClient {
         alias?: string;
         modelId?: string;
         friendlyName?: string;
+        capabilities?: string[];
       };
       return {
         reachable: true,
@@ -159,6 +161,7 @@ export class BridgeClient {
         alias: data.alias,
         modelId: data.modelId,
         friendlyName: data.friendlyName,
+        capabilities: data.capabilities,
       };
     } catch {
       return { reachable: false, installed: false, loaded: false };

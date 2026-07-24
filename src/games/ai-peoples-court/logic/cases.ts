@@ -8,17 +8,34 @@ export const courtCases: readonly CourtCase[] = [
     claim:
       "A rare orchid died while its owner was away. The owner says her neighbor ignored written care instructions.",
     stakes: "$420 replacement value",
+    privateTruth:
+      "Ellis opened the studio window after watering the orchid and genuinely forgot to close it. The overnight freeze killed the plant. Mara never gave an explicit window instruction. Ellis initially minimizes this mistake but admits it when pressed about the text message.",
     plaintiff: {
       name: "Mara Venn",
       role: "Orchid collector",
       opening:
         "I trusted Ellis with one simple task: water my moon orchid once and keep the studio window shut. I came home to a frozen plant and an open window.",
+      voice:
+        "precise, controlled, emotionally attached to the orchid; becomes sharp when Ellis minimizes the loss",
+      privateKnowledge:
+        "Mara knows her care card omitted the window instruction and is embarrassed by that omission. Her receipt is genuine.",
     },
     defendant: {
       name: "Ellis Rowe",
       role: "Upstairs neighbor",
       opening:
         "I watered it exactly once. The window was already cracked when I arrived, and Mara never told me it had to stay closed.",
+      voice:
+        "friendly but defensive, speaks in short explanations, blurts corrections when cornered",
+      privateKnowledge:
+        "Ellis opened the window, sent the text, and forgot it. Ellis first claims it was already open, then can be confronted with the message.",
+    },
+    witness: {
+      name: "Ivo Chen",
+      role: "Building superintendent",
+      voice: "matter-of-fact, observant, dislikes speculation",
+      privateKnowledge:
+        "Ivo personally recorded the studio window closed Wednesday afternoon and the freeze overnight Thursday. Ivo did not see who opened it.",
     },
     evidence: [
       {
@@ -87,17 +104,34 @@ export const courtCases: readonly CourtCase[] = [
     claim:
       "A neighborhood club paid for a parade float that was dismantled before the advertised rain date.",
     stakes: "$650 service refund",
+    privateTruth:
+      "The signed final invoice covered Saturday only and the club declined optional storage. Nia tried twice to warn Tobin before dismantling. Tobin relied on an earlier conditional email without reading the final order.",
     plaintiff: {
       name: "Tobin Bell",
       role: "Lantern Street Club treasurer",
       opening:
         "We paid Juniper Works for a float through Sunday. Saturday's parade was rained out, yet the float was gone before Sunday's rain-date event.",
+      voice:
+        "earnest, civic-minded, talks quickly and treats assumptions as shared understandings",
+      privateKnowledge:
+        "Tobin skimmed the final invoice and did not purchase storage, but sincerely believed the early email guaranteed Sunday.",
     },
     defendant: {
       name: "Nia Calder",
       role: "Juniper Works owner",
       opening:
         "The signed order was for Saturday only. Keeping the float another day required storage that the club declined to purchase.",
+      voice:
+        "calm, contractual, slightly exasperated; interrupts only to correct dates or prices",
+      privateKnowledge:
+        "Nia left two voicemails before dismantling and has no reason to lie. The early email was explicitly conditional.",
+    },
+    witness: {
+      name: "Pax Moreno",
+      role: "Parade coordinator",
+      voice: "cheerful but careful, separates club plans from vendor promises",
+      privateKnowledge:
+        "Pax published the rain-date flyer for the club but never discussed it with Nia or Juniper Works.",
     },
     evidence: [
       {
@@ -166,17 +200,35 @@ export const courtCases: readonly CourtCase[] = [
     claim:
       "A cafe rejected a commissioned mural because the finished robot was orange instead of the requested copper.",
     stakes: "$900 final payment",
+    privateTruth:
+      "Sela followed the signed copper/orange language and matched the approved vivid sketch. Oren saw the first day's orange paint and stayed silent, hoping later highlights would change it. The work was completed as approved.",
     plaintiff: {
       name: "Sela Finch",
       role: "Independent mural artist",
       opening:
         "The cafe approved my color sketch and watched me paint for two days. Only after completion did they decide the robot was the wrong shade.",
+      voice:
+        "confident, visual, specific about process; bristles when her professionalism is questioned",
+      privateKnowledge:
+        "Sela matched the approved sketch and offered only a discounted repaint because she believes the contract was fulfilled.",
     },
     defendant: {
       name: "Oren Pike",
       role: "Owner of Comet Cup Cafe",
       opening:
         "We asked for a dignified copper robot. What we received is bright orange and does not match our interior. That is not what we ordered.",
+      voice:
+        "polished, image-conscious, hesitant when asked what exactly he approved",
+      privateKnowledge:
+        "Oren approved the sketch mainly for composition, saw the orange paint on day one, and chose not to object.",
+    },
+    witness: {
+      name: "Lumi Hart",
+      role: "Cafe shift manager",
+      voice:
+        "plainspoken, loyal to the cafe but unwilling to change what she saw",
+      privateKnowledge:
+        "Lumi heard Oren praise the mural on day one and saw no request for a color change until after completion.",
     },
     evidence: [
       {

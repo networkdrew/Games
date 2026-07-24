@@ -43,7 +43,7 @@ different Cloudflare deployment. Nothing here modifies either of those.
 src/
   games/
     ai-dungeon-door/       complete game feature: React entry, UI components, connection lifecycle, deterministic logic, and colocated tests
-    ai-peoples-court/      complete courtroom game, case records, rules, and tests
+    ai-peoples-court/      local-LLM courtroom chat, bounded memory, case truth, and tests
   lib/games/            registry.ts (all games), schema.ts, categories.ts
   lib/bridge/client.ts   browser-side client for the local bridge (health/ensure/release, streaming turn+opening requests, one in-flight at a time)
   islands/GameGrid.tsx   portal-only searchable/filterable game grid
@@ -56,6 +56,9 @@ scripts/verify-live-model.mjs        live (non-mocked) check against a real runn
 scripts/evaluate-dungeon-models.mjs  reusable model-evaluation harness — see docs/dungeon-chat-model-selection.md
 Start-AIDungeonDoor.ps1  Windows launcher: checks LM Studio, starts the bridge, opens the game (the bridge itself loads the model on first connect)
 ```
+
+Use `npm run court:play` (or `Start AI Peoples Court.bat`) to start the local
+AI stack and open AI People's Court.
 
 Every game owns one folder under `src/games/<game-id>/`. Astro route adapters
 must remain under `src/pages/` because Astro uses that directory to generate

@@ -217,6 +217,17 @@ the mixed-content block that would otherwise apply to `https://` → plain
 `http://` requests. This is documented browser behavior, not a guess, but it
 should be re-confirmed once the real deployment exists.
 
+## AI People's Court contract
+
+The same loopback process also exposes `POST /api/court/ensure` and
+`POST /api/court/turn`. The court request contains a bounded fictional case,
+fixed participant ids, the judge's latest free-text statement, and capped
+memory/transcript fields. `bridge/court-protocol.mjs` supplies the system
+prompt and accepts only bailiff, clerk, plaintiff, defendant, and witness
+messages. The model cannot emit a judge message or verdict. Hidden rolling
+memory and visible participant messages are returned as separate NDJSON
+events.
+
 If it were ever blocked, the fallback is already built in:
 `Start-AIDungeonDoor.ps1 -Dev` serves the identical static build from
 `localhost` instead. And even with the bridge fully unreachable for any

@@ -1,73 +1,238 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import GameAppShell from "@/components/react/GameAppShell";
 import Icon from "@/components/react/Icon";
+import { useBridgeConnection } from "@/games/ai-dungeon-door/components/useBridgeConnection";
+import {
+  CourtBridgeClient,
+  type CourtGameClient,
+  type CourtTurnRequest,
+} from "./CourtBridgeClient";
 import { courtCases, getCourtCase } from "./logic/cases";
 import {
-  askCourtQuestion,
+  addJudgeMessage,
+  applySimulatedTurn,
   createCourtSession,
   deliverVerdict,
-  inspectEvidence,
 } from "./logic/engine";
-import type { PartySide } from "./logic/types";
+import type { CourtSession, CourtSpeaker, PartySide } from "./logic/types";
 
 interface AIPeoplesCourtGameProps {
   initialCaseIndex?: number;
+  bridgeClient?: CourtGameClient;
 }
 
-function sideLabel(side: PartySide): string {
-  return side === "plaintiff" ? "Plaintiff" : "Defendant";
+const SPEAKER_COLORS: Record<CourtSpeaker, string> = {
+  judge: "court-chat--judge",
+  bailiff: "court-chat--official",
+  clerk: "court-chat--official",
+  plaintiff: "court-chat--plaintiff",
+  defendant: "court-chat--defendant",
+  witness: "court-chat--witness",
+};
+
+function connectionLabel(state: string) {
+  if (state === "ready") return "Local courtroom live";
+  if (state === "loading-model") return "Loading local cast…";
+  if (state === "warming") return "Calling court to order…";
+  if (state === "reconnecting") return "Reconnecting…";
+  if (state === "offline" || state === "failed")
+    return "Local courtroom unavailable";
+  return "Connecting to local courtroom…";
 }
 
 export default function AIPeoplesCourtGame({
   initialCaseIndex = 0,
+  bridgeClient,
 }: AIPeoplesCourtGameProps) {
   const [caseIndex, setCaseIndex] = useState(initialCaseIndex);
   const [session, setSession] = useState(() =>
     createCourtSession(initialCaseIndex),
   );
-  const [selectedEvidence, setSelectedEvidence] = useState<string | null>(null);
-  const [announcement, setAnnouncement] = useState("Court is now in session.");
+  const [input, setInput] = useState("");
+  const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState("");
+  const [showVerdict, setShowVerdict] = useState(false);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const openingRequestedRef = useRef(false);
+  const clientRef = useRef<CourtGameClient | null>(null);
+  if (!clientRef.current)
+    clientRef.current = bridgeClient ?? new CourtBridgeClient();
+  const connection = useBridgeConnection(clientRef.current);
   const courtCase = getCourtCase(session.caseId);
-  const selectedItem = courtCase.evidence.find(
-    (item) => item.id === selectedEvidence,
-  );
+
+  const people = {
+    bailiff: { name: "Bailiff Arden", role: "Bailiff" },
+    clerk: { name: "Clerk Sol", role: "Court clerk" },
+    plaintiff: courtCase.plaintiff,
+    defendant: courtCase.defendant,
+    witness: courtCase.witness,
+  } as const;
+
+  useEffect(() => {
+    transcriptRef.current?.scrollTo({
+      top: transcriptRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [session.transcript.length, pending]);
+
+  useEffect(() => () => clientRef.current?.cancelPending(), []);
+
+  useEffect(() => {
+    if (openingRequestedRef.current || session.transcript.length > 0 || pending)
+      return;
+    if (!connection.readyToWarm && connection.state !== "ready") return;
+    openingRequestedRef.current = true;
+    void requestSimulation(
+      session,
+      "Bailiff, call the case. Clerk, identify the parties. Then let each party make a brief opening statement.",
+      "opening",
+    );
+  }, [
+    connection.readyToWarm,
+    connection.state,
+    pending,
+    session.caseId,
+    session.transcript.length,
+  ]);
+
+  function buildRequest(
+    current: CourtSession,
+    playerMessage: string,
+    phase: CourtTurnRequest["phase"],
+  ): CourtTurnRequest {
+    return {
+      caseId: courtCase.id,
+      caseTitle: courtCase.title,
+      publicBrief: `${courtCase.claim} Claimed stakes: ${courtCase.stakes}. Exhibits in the record: ${courtCase.evidence.map((item) => `${item.title}: ${item.detail}`).join(" | ")}`,
+      privateTruth: courtCase.privateTruth,
+      participants: [
+        {
+          id: "bailiff",
+          name: people.bailiff.name,
+          role: people.bailiff.role,
+          voice: "formal, concise, attentive to courtroom order",
+          privateKnowledge: "No private case knowledge.",
+        },
+        {
+          id: "clerk",
+          name: people.clerk.name,
+          role: people.clerk.role,
+          voice: "neutral, procedural, reads the record exactly",
+          privateKnowledge: "Knows the public case brief and exhibit list.",
+        },
+        {
+          id: "plaintiff",
+          name: courtCase.plaintiff.name,
+          role: courtCase.plaintiff.role,
+          voice: courtCase.plaintiff.voice,
+          privateKnowledge: courtCase.plaintiff.privateKnowledge,
+        },
+        {
+          id: "defendant",
+          name: courtCase.defendant.name,
+          role: courtCase.defendant.role,
+          voice: courtCase.defendant.voice,
+          privateKnowledge: courtCase.defendant.privateKnowledge,
+        },
+        {
+          id: "witness",
+          name: courtCase.witness.name,
+          role: courtCase.witness.role,
+          voice: courtCase.witness.voice,
+          privateKnowledge: courtCase.witness.privateKnowledge,
+        },
+      ],
+      phase,
+      turnNumber: current.turnNumber,
+      allowInterruptions:
+        phase !== "opening" &&
+        current.turnNumber > 0 &&
+        current.turnNumber % 3 === 0,
+      playerMessage,
+      memorySummary: current.memorySummary,
+      memoryFacts: [...current.memoryFacts],
+      recentMessages: current.transcript.slice(-10).map((message) => ({
+        name: message.name,
+        text: message.text,
+      })),
+    };
+  }
+
+  async function requestSimulation(
+    current: CourtSession,
+    playerMessage: string,
+    phase: CourtTurnRequest["phase"],
+  ) {
+    setPending(true);
+    setFailure("");
+    const result = await clientRef.current!.takeTurn(
+      buildRequest(current, playerMessage, phase),
+    );
+    setPending(false);
+    if (result.aborted) return;
+    if (
+      result.unavailable ||
+      !result.memorySummary ||
+      result.messages.length === 0
+    ) {
+      setFailure(
+        "The local cast could not produce a valid courtroom turn. Retry the connection or ask again.",
+      );
+      connection.reportDisconnect();
+      return;
+    }
+    const generated = result.messages.map((message) => ({
+      ...message,
+      name: people[message.speaker].name,
+    }));
+    setSession((latest) =>
+      applySimulatedTurn(
+        latest,
+        generated,
+        result.memorySummary!,
+        result.memoryFact,
+      ),
+    );
+    connection.markReady();
+  }
+
+  function submit(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const message = input.trim();
+    if (!message || pending || session.verdict) return;
+    const next = addJudgeMessage(session, message);
+    setSession(next);
+    setInput("");
+    void requestSimulation(next, message, "hearing");
+  }
 
   function startNextCase() {
     const nextIndex = (caseIndex + 1) % courtCases.length;
+    clientRef.current?.cancelPending();
     setCaseIndex(nextIndex);
     setSession(createCourtSession(nextIndex));
-    setSelectedEvidence(null);
-    setAnnouncement("A new case is now before the court.");
+    setInput("");
+    setFailure("");
+    setShowVerdict(false);
+    setPending(false);
+    openingRequestedRef.current = false;
   }
 
-  function reviewEvidence(evidenceId: string) {
-    const item = courtCase.evidence.find(
-      (candidate) => candidate.id === evidenceId,
-    );
-    if (!item) return;
-    setSelectedEvidence(evidenceId);
-    setSession((current) => inspectEvidence(current, evidenceId));
-    setAnnouncement(`${item.title} entered into the record.`);
+  function enterVerdict(side: PartySide) {
+    if (pending || session.verdict) return;
+    const partyName =
+      side === "plaintiff"
+        ? courtCase.plaintiff.name
+        : courtCase.defendant.name;
+    const words = `Judgment is entered for the ${side}, ${partyName}. This hearing is concluded.`;
+    const next = deliverVerdict(addJudgeMessage(session, words), side);
+    setSession(next);
+    setShowVerdict(false);
+    void requestSimulation(next, words, "deliberation");
   }
 
-  function ask(questionId: string) {
-    const question = courtCase.questions.find(
-      (candidate) => candidate.id === questionId,
-    );
-    if (!question) return;
-    setSession((current) => askCourtQuestion(current, questionId));
-    setAnnouncement(`${sideLabel(question.side)} answered the question.`);
-  }
-
-  function ruleFor(side: PartySide) {
-    setSession((current) => deliverVerdict(current, side));
-    setAnnouncement(`Judgment entered for the ${side}.`);
-  }
-
-  const accuracy =
-    session.verdict === null
-      ? null
-      : session.verdict === courtCase.correctVerdict;
+  const offline =
+    connection.state === "offline" || connection.state === "failed";
 
   return (
     <GameAppShell
@@ -76,19 +241,39 @@ export default function AIPeoplesCourtGame({
       backLabel="All games"
       onNewGame={startNextCase}
       newGameLabel="Next case"
-      actionsSlot={
-        <span className="courtroom-docket hidden text-xs font-semibold sm:inline">
-          {courtCase.docket}
-        </span>
+      connectionSlot={
+        <div className="court-connection flex items-center gap-2 text-xs">
+          <span
+            className={`h-2 w-2 rounded-full ${
+              connection.state === "ready"
+                ? "bg-success"
+                : offline
+                  ? "bg-text-muted"
+                  : "bg-accent animate-pulse"
+            }`}
+          />
+          <span className="hidden sm:inline">
+            {connectionLabel(connection.state)}
+          </span>
+          {offline && (
+            <button
+              type="button"
+              onClick={connection.retry}
+              className="underline underline-offset-2"
+            >
+              Retry
+            </button>
+          )}
+        </div>
       }
     >
-      <main className="courtroom-backdrop h-full min-h-0 overflow-y-auto p-3 sm:p-5">
-        <div className="mx-auto grid w-full max-w-7xl gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_19rem]">
-          <aside className="courtroom-panel overflow-hidden rounded-xl border">
-            <div className="courtroom-rail h-1.5" aria-hidden="true" />
+      <main className="courtroom-backdrop h-full min-h-0 p-2 sm:p-4">
+        <div className="mx-auto grid h-full min-h-0 w-full max-w-7xl gap-3 lg:grid-cols-[17rem_minmax(0,1fr)_18rem]">
+          <aside className="courtroom-panel hidden min-h-0 overflow-y-auto rounded-xl border lg:block">
+            <div className="courtroom-rail h-1.5" />
             <div className="p-4">
-              <p className="courtroom-kicker text-[11px] font-bold tracking-[0.18em] uppercase">
-                Case file · {courtCase.docket}
+              <p className="courtroom-kicker text-[10px] font-bold tracking-[0.18em] uppercase">
+                Case {courtCase.docket}
               </p>
               <h1 className="courtroom-heading mt-2 text-xl font-bold">
                 {courtCase.title}
@@ -100,203 +285,233 @@ export default function AIPeoplesCourtGame({
                 Claim: {courtCase.stakes}
               </p>
             </div>
-
-            <div className="courtroom-divider border-t px-4 py-4">
-              <h2 className="courtroom-heading flex items-center gap-2 text-sm font-bold">
-                <Icon name="search" className="h-4 w-4" />
-                Evidence
+            <div className="courtroom-divider border-t p-4">
+              <h2 className="courtroom-heading text-sm font-bold">
+                People in the room
               </h2>
-              <div className="mt-3 space-y-2">
-                {courtCase.evidence.map((item) => {
-                  const reviewed = session.inspectedEvidence.includes(item.id);
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => reviewEvidence(item.id)}
-                      aria-pressed={selectedEvidence === item.id}
-                      className="courtroom-evidence w-full rounded-lg border p-3 text-left transition-colors"
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold">
-                          {item.title}
-                        </span>
-                        {reviewed && (
-                          <span className="courtroom-reviewed text-[10px] font-bold uppercase">
-                            Reviewed
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 opacity-75">
-                        {item.summary}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="mt-3 space-y-3">
+                {(["plaintiff", "defendant", "witness"] as const).map((id) => (
+                  <div key={id}>
+                    <p className="text-sm font-semibold">{people[id].name}</p>
+                    <p className="courtroom-note text-xs">{people[id].role}</p>
+                  </div>
+                ))}
               </div>
             </div>
+            <details className="courtroom-divider border-t p-4">
+              <summary className="courtroom-heading cursor-pointer text-sm font-bold">
+                Exhibits in the record
+              </summary>
+              <div className="mt-3 space-y-3">
+                {courtCase.evidence.map((item) => (
+                  <div key={item.id}>
+                    <p className="text-xs font-bold">{item.title}</p>
+                    <p className="courtroom-copy mt-1 text-xs leading-5">
+                      {item.detail}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </details>
           </aside>
 
-          <section className="courtroom-panel overflow-hidden rounded-xl border">
-            <div className="courtroom-bench px-4 py-5 text-center sm:px-7">
-              <div className="courtroom-seal mx-auto flex h-14 w-14 items-center justify-center rounded-full border">
-                <Icon name="hammer" className="h-7 w-7" />
+          <section className="courtroom-panel flex min-h-0 flex-col overflow-hidden rounded-xl border">
+            <header className="courtroom-bench flex items-center gap-3 px-4 py-3">
+              <div className="courtroom-seal flex h-10 w-10 shrink-0 items-center justify-center rounded-full border">
+                <Icon name="hammer" className="h-5 w-5" />
               </div>
-              <p className="mt-3 text-[10px] font-bold tracking-[0.22em] uppercase opacity-75">
-                The Honorable Player Presiding
-              </p>
-              <h2 className="mt-1 text-2xl font-bold">Court is in session</h2>
-            </div>
-
-            <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
-              {(["plaintiff", "defendant"] as const).map((side) => {
-                const party = courtCase[side];
-                return (
-                  <article
-                    key={side}
-                    className="courtroom-party rounded-xl border p-4"
-                  >
-                    <p className="courtroom-kicker text-[10px] font-bold tracking-[0.16em] uppercase">
-                      {sideLabel(side)}
-                    </p>
-                    <h3 className="courtroom-heading mt-1 text-lg font-bold">
-                      {party.name}
-                    </h3>
-                    <p className="courtroom-note text-xs">{party.role}</p>
-                    <blockquote className="courtroom-copy mt-3 text-sm leading-6">
-                      “{party.opening}”
-                    </blockquote>
-                  </article>
-                );
-              })}
-            </div>
-
-            <div className="courtroom-divider border-t p-4 sm:p-5">
-              <h2 className="courtroom-heading flex items-center gap-2 text-base font-bold">
-                <Icon name="message-circle" className="h-4 w-4" />
-                Question the parties
-              </h2>
-              <p className="courtroom-copy mt-1 text-xs">
-                Ask as many questions as you need. Their answers become part of
-                the record.
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {courtCase.questions.map((question) => {
-                  const asked = session.askedQuestions.includes(question.id);
-                  return (
-                    <div
-                      key={question.id}
-                      className="courtroom-question rounded-lg border p-3"
-                    >
-                      <p className="courtroom-kicker text-[10px] font-bold uppercase">
-                        For the {question.side}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => ask(question.id)}
-                        disabled={asked}
-                        className="courtroom-question-button mt-1 text-left text-sm font-semibold"
-                      >
-                        {question.prompt}
-                      </button>
-                      {asked && (
-                        <p className="courtroom-answer mt-2 border-l-2 pl-3 text-sm leading-6">
-                          {question.answer}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          <aside className="space-y-4">
-            <section className="courtroom-panel rounded-xl border p-4">
-              <h2 className="courtroom-heading flex items-center gap-2 text-sm font-bold">
-                <Icon name="scroll-text" className="h-4 w-4" />
-                Judge's notes
-              </h2>
-              {selectedItem ? (
-                <div className="courtroom-document mt-3 rounded-lg border p-4">
-                  <p className="text-sm font-bold">{selectedItem.title}</p>
-                  <p className="mt-2 text-sm leading-6">
-                    {selectedItem.detail}
-                  </p>
-                </div>
-              ) : (
-                <p className="courtroom-copy mt-3 text-sm leading-6">
-                  Select an evidence item to inspect its full contents.
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold">{courtCase.title}</p>
+                <p className="text-[11px] opacity-75">
+                  {courtCase.docket} · You are presiding
                 </p>
-              )}
-              <div className="courtroom-progress mt-4 rounded-lg p-3 text-xs">
-                Record reviewed: {session.inspectedEvidence.length}/
-                {courtCase.evidence.length} exhibits ·{" "}
-                {session.askedQuestions.length}/{courtCase.questions.length}{" "}
-                questions
               </div>
-            </section>
+              <button
+                type="button"
+                onClick={() => setShowVerdict((shown) => !shown)}
+                disabled={pending || session.transcript.length === 0}
+                className="courtroom-rule ml-auto rounded-md px-3 py-2 text-xs font-bold disabled:opacity-40"
+              >
+                Deliver verdict
+              </button>
+            </header>
 
-            <section className="courtroom-panel rounded-xl border p-4">
-              {session.verdict === null ? (
-                <>
-                  <h2 className="courtroom-heading text-base font-bold">
-                    Deliver your verdict
+            {showVerdict && !session.verdict && (
+              <div className="courtroom-verdict-bar border-b p-3">
+                <p className="mb-2 text-center text-xs font-semibold">
+                  The verdict is yours alone. Which side prevails?
+                </p>
+                <div className="flex justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => enterVerdict("plaintiff")}
+                    className="courtroom-verdict rounded-lg px-4 py-2 text-xs font-bold"
+                  >
+                    {courtCase.plaintiff.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => enterVerdict("defendant")}
+                    className="courtroom-verdict courtroom-verdict--secondary rounded-lg px-4 py-2 text-xs font-bold"
+                  >
+                    {courtCase.defendant.name}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div
+              ref={transcriptRef}
+              className="court-transcript min-h-0 flex-1 overflow-y-auto p-3 sm:p-5"
+              aria-live="polite"
+            >
+              {session.transcript.length === 0 && !offline && (
+                <div className="courtroom-copy flex h-full items-center justify-center text-center text-sm">
+                  <p>Connecting the local cast and preparing the hearing…</p>
+                </div>
+              )}
+              {offline && session.transcript.length === 0 && (
+                <div className="court-offline m-auto max-w-md rounded-xl border p-5 text-center">
+                  <Icon name="wifi-off" className="mx-auto h-7 w-7" />
+                  <h2 className="courtroom-heading mt-3 font-bold">
+                    The local cast is not connected
                   </h2>
                   <p className="courtroom-copy mt-2 text-sm leading-6">
-                    You control the decision. Review the record, then rule for
-                    one party.
-                  </p>
-                  <div className="mt-4 grid gap-2">
-                    <button
-                      type="button"
-                      onClick={() => ruleFor("plaintiff")}
-                      className="courtroom-verdict rounded-lg px-4 py-3 text-sm font-bold"
-                    >
-                      Rule for {courtCase.plaintiff.name}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => ruleFor("defendant")}
-                      className="courtroom-verdict courtroom-verdict--secondary rounded-lg px-4 py-3 text-sm font-bold"
-                    >
-                      Rule for {courtCase.defendant.name}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div aria-live="polite">
-                  <p className="courtroom-kicker text-[11px] font-bold uppercase">
-                    Case decided
-                  </p>
-                  <h2 className="courtroom-heading mt-1 text-xl font-bold">
-                    {accuracy ? "Sound judgment" : "A difficult call"}
-                  </h2>
-                  <p className="courtroom-score mt-3 text-3xl font-bold">
-                    {session.score}/100
-                  </p>
-                  <p className="courtroom-copy mt-3 text-sm leading-6">
-                    You ruled for the {session.verdict}. The record supports the{" "}
-                    {courtCase.correctVerdict}.
-                  </p>
-                  <p className="courtroom-ruling mt-3 rounded-lg p-3 text-sm leading-6">
-                    {courtCase.ruling}
+                    Start LM Studio and the OpenGames bridge, then retry. This
+                    courtroom uses your local model—no cloud AI and no scripted
+                    stand-ins.
                   </p>
                   <button
                     type="button"
-                    onClick={startNextCase}
-                    className="courtroom-verdict mt-4 w-full rounded-lg px-4 py-3 text-sm font-bold"
+                    onClick={connection.retry}
+                    className="courtroom-verdict mt-4 rounded-lg px-4 py-2 text-sm font-bold"
                   >
-                    Call the next case
+                    Retry connection
                   </button>
                 </div>
               )}
-            </section>
+              <div className="space-y-3">
+                {session.transcript.map((message) => (
+                  <article
+                    key={message.id}
+                    className={`court-chat ${SPEAKER_COLORS[message.speaker]} rounded-xl border p-3 sm:p-4`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold">{message.name}</p>
+                      {message.interrupted && (
+                        <span className="court-interrupt rounded-full px-2 py-0.5 text-[9px] font-bold uppercase">
+                          interrupts
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm leading-6">{message.text}</p>
+                  </article>
+                ))}
+                {pending && (
+                  <div className="court-typing inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-xs">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full" />
+                    The courtroom is responding…
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <footer className="courtroom-composer border-t p-3">
+              {failure && (
+                <p role="alert" className="mb-2 text-xs text-red-700">
+                  {failure}
+                </p>
+              )}
+              {session.verdict ? (
+                <div className="text-center">
+                  <p className="courtroom-heading text-sm font-bold">
+                    Judgment entered for the {session.verdict}.
+                  </p>
+                  <p className="courtroom-copy mt-1 text-xs">
+                    The evidence-supported ruling favored the{" "}
+                    {courtCase.correctVerdict}. Call the next case when ready.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+                    {[
+                      `Plaintiff ${courtCase.plaintiff.name}, answer this: `,
+                      `Defendant ${courtCase.defendant.name}, explain: `,
+                      `Call ${courtCase.witness.name} to testify.`,
+                      "Order. One person at a time.",
+                    ].map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => setInput(prompt)}
+                        className="court-prompt shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold"
+                      >
+                        {prompt.replace(/: $/, "")}
+                      </button>
+                    ))}
+                  </div>
+                  <form onSubmit={submit} className="flex gap-2">
+                    <label htmlFor="court-command" className="sr-only">
+                      Speak as the presiding judge
+                    </label>
+                    <input
+                      id="court-command"
+                      value={input}
+                      onChange={(event) => setInput(event.target.value)}
+                      maxLength={500}
+                      disabled={pending || offline}
+                      placeholder="Question anyone, call a witness, manage the hearing…"
+                      className="court-input min-w-0 flex-1 rounded-lg border px-3 py-2.5 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!input.trim() || pending || offline}
+                      className="courtroom-verdict rounded-lg px-4 py-2 text-sm font-bold disabled:opacity-40"
+                    >
+                      Speak
+                    </button>
+                  </form>
+                </>
+              )}
+            </footer>
+          </section>
+
+          <aside className="courtroom-panel hidden min-h-0 overflow-y-auto rounded-xl border p-4 lg:block">
+            <h2 className="courtroom-heading flex items-center gap-2 text-sm font-bold">
+              <Icon name="scroll-text" className="h-4 w-4" />
+              Court memory
+            </h2>
+            <p className="courtroom-copy mt-2 text-xs leading-5">
+              The local model receives this rolling ledger each turn so names,
+              testimony, disputes, and emotional shifts remain coherent.
+            </p>
+            <div className="courtroom-progress mt-3 rounded-lg p-3 text-xs leading-5">
+              {session.memorySummary || "No testimony recorded yet."}
+            </div>
+            <h3 className="courtroom-heading mt-5 text-xs font-bold uppercase">
+              Durable testimony
+            </h3>
+            {session.memoryFacts.length ? (
+              <ol className="courtroom-copy mt-2 list-decimal space-y-2 pl-4 text-xs leading-5">
+                {session.memoryFacts.map((fact) => (
+                  <li key={fact}>{fact}</li>
+                ))}
+              </ol>
+            ) : (
+              <p className="courtroom-note mt-2 text-xs">
+                Important admissions and contradictions will appear here.
+              </p>
+            )}
+            <div className="courtroom-divider mt-5 border-t pt-4">
+              <p className="courtroom-note text-[11px] leading-5">
+                Interruptions are selectively enabled every few turns. The model
+                may object, correct, or react, but cannot speak for the judge or
+                decide the case.
+              </p>
+            </div>
           </aside>
         </div>
-        <p className="sr-only" aria-live="polite">
-          {announcement}
-        </p>
       </main>
     </GameAppShell>
   );

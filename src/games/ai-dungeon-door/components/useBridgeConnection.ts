@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BridgeClient, HealthResult } from "@/lib/bridge/client";
+import type { EnsureModelResult, HealthResult } from "@/lib/bridge/client";
+
+export interface BridgeConnectionClient {
+  checkHealth: () => Promise<HealthResult>;
+  ensureModel: () => Promise<EnsureModelResult>;
+}
 
 /**
  * The full connection lifecycle the game shell surfaces to the player (see
@@ -44,7 +49,7 @@ export interface UseBridgeConnectionResult {
 }
 
 export function useBridgeConnection(
-  bridge: BridgeClient,
+  bridge: BridgeConnectionClient,
 ): UseBridgeConnectionResult {
   const [state, setState] = useState<ConnectionState>("connecting");
   const [health, setHealth] = useState<HealthResult | null>(null);
