@@ -34,6 +34,7 @@ export type ConnectionState =
 
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000];
 const MAX_ATTEMPTS = BACKOFF_MS.length;
+const BACKGROUND_RETRY_MS = 30_000;
 
 export interface UseBridgeConnectionResult {
   state: ConnectionState;
@@ -79,6 +80,14 @@ export function useBridgeConnection(
         if (attemptRef.current > MAX_ATTEMPTS) {
           setState(mode === "reconnect" ? "offline" : "failed");
           setReadyToWarm(false);
+          // A Windows login task may still be bringing LM Studio and the
+          // bridge online, or either process may be restarting. Keep a quiet
+          // recovery loop alive so the page heals without a Retry click.
+          attemptRef.current = 0;
+          timerRef.current = setTimeout(
+            () => connect("reconnect"),
+            BACKGROUND_RETRY_MS,
+          );
           return;
         }
         setState(mode === "reconnect" ? "reconnecting" : "connecting");
@@ -155,6 +164,22 @@ export function useBridgeConnection(
     setState("reconnecting");
     connect("reconnect");
   }, [connect]);
+
+  useEffect(() => {
+    if (state !== "offline" && state !== "failed") return;
+    const retryNow = () => retry();
+    const retryWhenVisible = () => {
+      if (document.visibilityState === "visible") retry();
+    };
+    window.addEventListener("focus", retryNow);
+    window.addEventListener("online", retryNow);
+    document.addEventListener("visibilitychange", retryWhenVisible);
+    return () => {
+      window.removeEventListener("focus", retryNow);
+      window.removeEventListener("online", retryNow);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    };
+  }, [retry, state]);
 
   return { state, health, retry, markReady, reportDisconnect, readyToWarm };
 }

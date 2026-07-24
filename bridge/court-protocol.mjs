@@ -85,8 +85,10 @@ export function parseCourtControl(raw) {
   const text = String(raw ?? "");
   const marker = /^RESPONSE:\s*/im.exec(text);
   const head = marker ? text.slice(0, marker.index) : text;
-  const memoryMatch = head.match(/^MEMORY:\s*(.+)$/im);
-  const factMatch = head.match(/^FACT:\s*(.+)$/im);
+  // Horizontal whitespace only: `\s*` can consume a newline and accidentally
+  // treat the following FACT/RESPONSE marker as the missing field's value.
+  const memoryMatch = head.match(/^MEMORY:[^\S\r\n]*([^\r\n]+)$/im);
+  const factMatch = head.match(/^FACT:[^\S\r\n]*([^\r\n]+)$/im);
   const memorySummary = cleanText(memoryMatch?.[1], 600);
   const factRaw = cleanText(factMatch?.[1], 140);
   const memoryFact =

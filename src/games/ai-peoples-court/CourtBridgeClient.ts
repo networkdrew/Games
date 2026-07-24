@@ -79,7 +79,10 @@ export interface CourtGameClient {
 
 const HEALTH_TIMEOUT_MS = 2_500;
 const ENSURE_TIMEOUT_MS = 130_000;
-const TURN_TIMEOUT_MS = 35_000;
+// A court request can contain three sequential local-model generations plus
+// one correction attempt per speaker. A dungeon-sized timeout could abort a
+// healthy opening statement before the later speakers finish.
+const TURN_TIMEOUT_MS = 180_000;
 
 export class CourtBridgeClient implements CourtGameClient {
   private inFlight: AbortController | null = null;
@@ -149,7 +152,11 @@ export class CourtBridgeClient implements CourtGameClient {
     this.cancelPending();
     const controller = new AbortController();
     this.inFlight = controller;
-    const timer = setTimeout(() => controller.abort(), TURN_TIMEOUT_MS);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, TURN_TIMEOUT_MS);
     const result: CourtTurnResult = {
       messages: [],
       memorySummary: null,
@@ -204,7 +211,10 @@ export class CourtBridgeClient implements CourtGameClient {
       return result;
     } catch {
       result.unavailable = true;
-      result.aborted = controller.signal.aborted;
+      // Only a superseded/unmounted request is intentionally aborted. A
+      // timeout is a real disconnect and must enter the automatic recovery
+      // path instead of leaving an empty courtroom stuck in "warming".
+      result.aborted = controller.signal.aborted && !timedOut;
       return result;
     } finally {
       clearTimeout(timer);

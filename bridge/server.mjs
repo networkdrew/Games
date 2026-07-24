@@ -76,6 +76,10 @@ function corsHeaders(origin) {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    // Compatibility with Chromium's earlier Private Network Access
+    // preflights. Current releases use a browser permission/policy instead,
+    // but this remains harmless and lets the same bridge work across both.
+    "Access-Control-Allow-Private-Network": "true",
     Vary: "Origin",
   };
 }
@@ -452,7 +456,7 @@ export function createRequestHandler(
           ? sanitizeCourtDialogue(textAfterCourtResponseMarker(raw))
           : null;
 
-        if (!dialogue || !control.memorySummary) {
+        if (!dialogue) {
           if (responseStarted) {
             writeEvent(res, {
               type: "speaker",
@@ -474,13 +478,13 @@ export function createRequestHandler(
           raw = correction ?? "";
           control = parseCourtControl(raw);
           dialogue = sanitizeCourtDialogue(textAfterCourtResponseMarker(raw));
-          if (dialogue && control.memorySummary) {
+          if (dialogue) {
             corrected = true;
             writeEvent(res, { type: "delta", text: dialogue });
           }
         }
 
-        if (!dialogue || !control.memorySummary) {
+        if (!dialogue) {
           failed = messagesThisTurn.length === 0;
           break;
         }
@@ -491,13 +495,13 @@ export function createRequestHandler(
           interrupted: index > 0,
         };
         messagesThisTurn.push(message);
+        const memorySummary =
+          control.memorySummary ||
+          body.memorySummary.trim() ||
+          `${participant.name} responded to the judge.`;
         writeEvent(res, {
           type: "memory",
-          summary: attributeCourtMemory(
-            control.memorySummary,
-            participant.name,
-            700,
-          ),
+          summary: attributeCourtMemory(memorySummary, participant.name, 700),
           fact: attributeCourtMemory(
             control.memoryFact,
             participant.name,

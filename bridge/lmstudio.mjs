@@ -79,7 +79,7 @@ export async function resolveAlias(alias) {
 // LM Studio's OpenAI-compatible server can just-in-time load a model on the
 // first request, but that uses the server's own default context/GPU
 // settings, not this game's tuned ones (see models.mjs). Explicitly loading
-// via `lms load --ttl --context-length --gpu --identifier` gives full
+// via `lms load --context-length --gpu` (and optionally `--ttl`) gives full
 // control over those settings and a stable, TTL-bounded lifetime, while
 // still functioning as "automatic" from the player's perspective — the
 // bridge does this itself on first turn, no manual `lms` use required.
@@ -115,7 +115,7 @@ export async function ensureModelLoaded(config) {
     return { alreadyLoaded: true };
   }
 
-  const loadPromise = runLms([
+  const loadArgs = [
     "load",
     config.lmStudioId,
     "-y",
@@ -123,9 +123,18 @@ export async function ensureModelLoaded(config) {
     String(config.contextLength),
     "--gpu",
     config.gpuOffload,
-    "--ttl",
-    String(config.ttlSeconds),
-  ]).finally(() => inFlightLoads.delete(config.lmStudioId));
+  ];
+  if (
+    typeof config.ttlSeconds === "number" &&
+    Number.isFinite(config.ttlSeconds) &&
+    config.ttlSeconds > 0
+  ) {
+    loadArgs.push("--ttl", String(config.ttlSeconds));
+  }
+
+  const loadPromise = runLms(loadArgs).finally(() =>
+    inFlightLoads.delete(config.lmStudioId),
+  );
 
   inFlightLoads.set(config.lmStudioId, loadPromise);
   await loadPromise;

@@ -37,7 +37,10 @@ const MODEL_CONFIGS = {
     contextLength: 8192,
     gpuOffload: "max",
     flashAttention: true,
-    ttlSeconds: 900,
+    // Keep the shared game model resident while the PC is on. The Windows
+    // background supervisor also re-ensures it if LM Studio is restarted.
+    // Set this to a positive number to opt back into idle unloading.
+    ttlSeconds: null,
     stopSequences: [],
     // Not a reasoning model — harmless no-op params, kept for consistency
     // and in case a future re-evaluation swaps in a reasoning-tier model.

@@ -60,6 +60,14 @@ Start-AIDungeonDoor.ps1  Windows launcher: checks LM Studio, starts the bridge, 
 Use `npm run court:play` (or `Start AI Peoples Court.bat`) to start the local
 AI stack and open AI People's Court.
 
+For the no-launcher setup, run `npm run background:install` once. A hidden
+per-user Windows logon task then keeps LM Studio's server, the loopback bridge,
+and the shared Sera 8B game model ready whenever you are signed in. Both local
+AI games connect automatically when their website opens. The installer also
+adds a machine browser policy exception for only
+`https://games.drewcassidy.dev`, avoiding a browser permission prompt. The task
+and those browser entries can be removed with `npm run background:uninstall`.
+
 Every game owns one folder under `src/games/<game-id>/`. Astro route adapters
 must remain under `src/pages/` because Astro uses that directory to generate
 URLs. Portal infrastructure, the validated registry, shared game shell, and

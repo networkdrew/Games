@@ -261,6 +261,9 @@ export default function AIPeoplesCourtGame({
     setLiveMessage(null);
     if (result.aborted) return;
     if (!result.memorySummary || result.messages.length === 0) {
+      if (phase === "opening") {
+        openingRequestedRef.current = false;
+      }
       setFailure(
         "The local cast could not produce a valid courtroom turn. Retry the connection or ask again.",
       );

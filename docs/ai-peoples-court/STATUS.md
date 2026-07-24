@@ -39,3 +39,10 @@ judge, choose the verdict, invent a speaker id, or access a cloud service.
 Run `npm run court:play` to launch the game and local bridge. Run
 `npm run court:verify -- "your test question"` to inspect a real local-model
 court response and parser result.
+
+For always-ready use, `npm run background:install` registers a hidden
+per-user Windows logon task. It starts and monitors LM Studio and the bridge,
+keeps the shared court model loaded, and lets the hosted page reconnect
+automatically without a launcher or manual Retry click. It also adds the exact
+hosted games origin to Edge and Chrome's loopback allowlists so current
+Local Network Access restrictions do not leave the page waiting for permission.

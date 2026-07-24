@@ -126,7 +126,8 @@ the final authority on whether a requested ending is actually reachable
 ## Model lifecycle: load, TTL, and unload
 
 - **Loading**: `bridge/lmstudio.mjs`'s `ensureModelLoaded(config)` shells out
-  to `lms load <id> -y --context-length <n> --gpu <offload> --ttl <seconds>`,
+  to `lms load <id> -y --context-length <n> --gpu <offload>` (plus
+  `--ttl <seconds>` only for configurations that opt into idle unloading),
   giving this game's own tuned settings (see `models.mjs`) rather than
   relying on LM Studio's default just-in-time settings. Single-flighted
   in-process (a `Map` of in-flight load promises keyed by model id) so
@@ -136,12 +137,11 @@ the final authority on whether a requested ending is actually reachable
   `GET /api/v0/models` (distinct from the OpenAI-compatible `/v1/models`,
   which lists every model on disk regardless of load state) to see the live
   `"loaded"`/`"not-loaded"` state without shelling out.
-- **TTL/idle unload**: enforced natively by LM Studio via the `--ttl` flag
-  passed at load time (confirmed live via `lms ps`, which reports a live
-  countdown next to the loaded model) — currently 900 seconds (15 minutes)
-  for the default `dungeon-chat` alias, in `models.mjs`. The bridge itself
-  does not run a separate idle timer; it trusts LM Studio's own mechanism,
-  which was directly observed to work on this installed version.
+- **Persistent default model**: the default shared game model omits `--ttl`,
+  so LM Studio keeps it resident while the PC is on. The hidden Windows logon
+  supervisor also re-ensures it if LM Studio restarts. Reference/evaluation
+  configurations can still set a positive `ttlSeconds` to opt into native
+  idle unloading.
 - **Manual release**: `POST /api/dungeon/release` calls `lms unload <id>`
   for exactly the model this bridge is configured to use — never a
   different, separately/manually loaded model.

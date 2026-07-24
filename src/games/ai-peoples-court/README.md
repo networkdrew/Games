@@ -17,3 +17,7 @@ Local-LLM courtroom simulation at `/ai-peoples-court/`.
 Start the production game and local cast with `npm run court:play` or
 `Start AI Peoples Court.bat`. Add `-Dev` when invoking the PowerShell launcher
 to use the local Astro server.
+
+For normal always-ready use, install the hidden Windows logon supervisor once
+with `npm run background:install`; after that, opening the hosted courtroom is
+enough.

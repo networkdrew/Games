@@ -193,6 +193,40 @@ test("court turn returns individual speakers and hidden memory", async () => {
   );
 });
 
+test("court keeps valid dialogue when optional memory metadata is malformed", async () => {
+  await withServer(
+    {
+      streamChatCompletion: mockStream(
+        "MEMORY:\nFACT: NONE\nRESPONSE:\nI opened the window and forgot to close it.",
+      ),
+    },
+    async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/court/turn`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+        body: JSON.stringify({
+          ...BASE_COURT_BODY,
+          speakerSequence: ["defendant"],
+        }),
+      });
+      assert.equal(res.status, 200);
+      const events = await readNdjson(res);
+      assert.equal(
+        events.find((event) => event.type === "message").text,
+        "I opened the window and forgot to close it.",
+      );
+      assert.equal(
+        events.find((event) => event.type === "memory").summary,
+        "Ellis Rowe: The case has been called.",
+      );
+      assert.equal(
+        events.some((event) => event.type === "unavailable"),
+        false,
+      );
+    },
+  );
+});
+
 test("turn: streams narration and a valid control proposal on success", async () => {
   await withServer(
     {
