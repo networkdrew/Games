@@ -4,17 +4,29 @@ import Icon from "@/components/react/Icon";
 import { useBridgeConnection } from "@/games/ai-dungeon-door/components/useBridgeConnection";
 import {
   CourtBridgeClient,
+  type CourtEvent,
   type CourtGameClient,
   type CourtTurnRequest,
 } from "./CourtBridgeClient";
-import { courtCases, getCourtCase } from "./logic/cases";
+import {
+  archiveGeneratedCase,
+  archiveVerdict,
+  loadCaseArchive,
+} from "./logic/archive";
+import { authoredCourtCases } from "./logic/cases";
+import { createCourtSeed, generateCourtCase } from "./logic/generator";
 import {
   addJudgeMessage,
   applySimulatedTurn,
   createCourtSession,
   deliverVerdict,
 } from "./logic/engine";
-import type { CourtSession, CourtSpeaker, PartySide } from "./logic/types";
+import type {
+  CourtCase,
+  CourtSession,
+  CourtSpeaker,
+  PartySide,
+} from "./logic/types";
 
 interface AIPeoplesCourtGameProps {
   initialCaseIndex?: number;
@@ -41,16 +53,31 @@ function connectionLabel(state: string) {
 }
 
 export default function AIPeoplesCourtGame({
-  initialCaseIndex = 0,
+  initialCaseIndex,
   bridgeClient,
 }: AIPeoplesCourtGameProps) {
-  const [caseIndex, setCaseIndex] = useState(initialCaseIndex);
+  const initialCaseRef = useRef<CourtCase | null>(null);
+  if (!initialCaseRef.current) {
+    const authored =
+      initialCaseIndex === undefined
+        ? undefined
+        : authoredCourtCases[initialCaseIndex];
+    initialCaseRef.current = authored ?? generateCourtCase(createCourtSeed());
+  }
+  const [courtCase, setCourtCase] = useState(initialCaseRef.current);
   const [session, setSession] = useState(() =>
-    createCourtSession(initialCaseIndex),
+    createCourtSession(initialCaseRef.current!.id),
   );
+  const [archive, setArchive] = useState(() => loadCaseArchive());
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState("");
+  const [liveMessage, setLiveMessage] = useState<{
+    speaker: Exclude<CourtSpeaker, "judge">;
+    name: string;
+    text: string;
+    interrupted: boolean;
+  } | null>(null);
   const [showVerdict, setShowVerdict] = useState(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const openingRequestedRef = useRef(false);
@@ -58,7 +85,6 @@ export default function AIPeoplesCourtGame({
   if (!clientRef.current)
     clientRef.current = bridgeClient ?? new CourtBridgeClient();
   const connection = useBridgeConnection(clientRef.current);
-  const courtCase = getCourtCase(session.caseId);
 
   const people = {
     bailiff: { name: "Bailiff Arden", role: "Bailiff" },
@@ -78,13 +104,18 @@ export default function AIPeoplesCourtGame({
   useEffect(() => () => clientRef.current?.cancelPending(), []);
 
   useEffect(() => {
+    if (initialCaseIndex !== undefined) return;
+    setArchive(archiveGeneratedCase(courtCase));
+  }, [courtCase, initialCaseIndex]);
+
+  useEffect(() => {
     if (openingRequestedRef.current || session.transcript.length > 0 || pending)
       return;
     if (!connection.readyToWarm && connection.state !== "ready") return;
     openingRequestedRef.current = true;
     void requestSimulation(
       session,
-      "Bailiff, call the case. Clerk, identify the parties. Then let each party make a brief opening statement.",
+      "Bailiff, call the case and identify the parties. Then let each party make a brief opening statement.",
       "opening",
     );
   }, [
@@ -100,6 +131,7 @@ export default function AIPeoplesCourtGame({
     playerMessage: string,
     phase: CourtTurnRequest["phase"],
   ): CourtTurnRequest {
+    const speakerSequence = chooseSpeakers(current, playerMessage, phase);
     return {
       caseId: courtCase.id,
       caseTitle: courtCase.title,
@@ -144,10 +176,7 @@ export default function AIPeoplesCourtGame({
       ],
       phase,
       turnNumber: current.turnNumber,
-      allowInterruptions:
-        phase !== "opening" &&
-        current.turnNumber > 0 &&
-        current.turnNumber % 3 === 0,
+      speakerSequence,
       playerMessage,
       memorySummary: current.memorySummary,
       memoryFacts: [...current.memoryFacts],
@@ -158,6 +187,51 @@ export default function AIPeoplesCourtGame({
     };
   }
 
+  function chooseSpeakers(
+    current: CourtSession,
+    playerMessage: string,
+    phase: CourtTurnRequest["phase"],
+  ): CourtTurnRequest["speakerSequence"] {
+    if (phase === "opening") return ["bailiff", "plaintiff", "defendant"];
+    if (phase === "deliberation") {
+      return [
+        "clerk",
+        current.verdict === "plaintiff" ? "defendant" : "plaintiff",
+      ];
+    }
+
+    const normalized = playerMessage.toLowerCase();
+    const mentions = (
+      id: "plaintiff" | "defendant" | "witness",
+      name: string,
+    ) => {
+      const parts = name.toLowerCase().split(/\s+/);
+      return (
+        normalized.includes(id) ||
+        parts.some((part) => part.length > 2 && normalized.includes(part))
+      );
+    };
+    let primary: CourtTurnRequest["speakerSequence"][number];
+    if (normalized.includes("bailiff")) primary = "bailiff";
+    else if (normalized.includes("clerk")) primary = "clerk";
+    else if (mentions("witness", courtCase.witness.name)) primary = "witness";
+    else if (mentions("plaintiff", courtCase.plaintiff.name))
+      primary = "plaintiff";
+    else if (mentions("defendant", courtCase.defendant.name))
+      primary = "defendant";
+    else primary = current.turnNumber % 2 === 0 ? "plaintiff" : "defendant";
+
+    const sequence: CourtTurnRequest["speakerSequence"] = [primary];
+    const interruptionTurn =
+      current.turnNumber > 0 && current.turnNumber % 3 === 0;
+    if (interruptionTurn) {
+      if (primary === "plaintiff") sequence.push("defendant");
+      else if (primary === "defendant") sequence.push("plaintiff");
+      else if (primary === "witness") sequence.push("defendant");
+    }
+    return sequence;
+  }
+
   async function requestSimulation(
     current: CourtSession,
     playerMessage: string,
@@ -165,16 +239,28 @@ export default function AIPeoplesCourtGame({
   ) {
     setPending(true);
     setFailure("");
+    setLiveMessage(null);
     const result = await clientRef.current!.takeTurn(
       buildRequest(current, playerMessage, phase),
+      (event: CourtEvent) => {
+        if (event.type === "speaker") {
+          setLiveMessage({
+            speaker: event.speaker,
+            name: event.name,
+            text: "",
+            interrupted: event.interrupted,
+          });
+        } else if (event.type === "delta") {
+          setLiveMessage((message) =>
+            message ? { ...message, text: message.text + event.text } : null,
+          );
+        }
+      },
     );
     setPending(false);
+    setLiveMessage(null);
     if (result.aborted) return;
-    if (
-      result.unavailable ||
-      !result.memorySummary ||
-      result.messages.length === 0
-    ) {
+    if (!result.memorySummary || result.messages.length === 0) {
       setFailure(
         "The local cast could not produce a valid courtroom turn. Retry the connection or ask again.",
       );
@@ -190,7 +276,7 @@ export default function AIPeoplesCourtGame({
         latest,
         generated,
         result.memorySummary!,
-        result.memoryFact,
+        result.memoryFacts,
       ),
     );
     connection.markReady();
@@ -207,10 +293,23 @@ export default function AIPeoplesCourtGame({
   }
 
   function startNextCase() {
-    const nextIndex = (caseIndex + 1) % courtCases.length;
+    const seed = createCourtSeed();
+    const difficulty = 1 + ((archive.length + (seed % 5)) % 5);
+    const nextCase = generateCourtCase(seed, difficulty);
     clientRef.current?.cancelPending();
-    setCaseIndex(nextIndex);
-    setSession(createCourtSession(nextIndex));
+    setCourtCase(nextCase);
+    setSession(createCourtSession(nextCase.id));
+    setInput("");
+    setFailure("");
+    setShowVerdict(false);
+    setPending(false);
+    openingRequestedRef.current = false;
+  }
+
+  function reopenArchivedCase(archivedCase: CourtCase) {
+    clientRef.current?.cancelPending();
+    setCourtCase(archivedCase);
+    setSession(createCourtSession(archivedCase.id));
     setInput("");
     setFailure("");
     setShowVerdict(false);
@@ -227,6 +326,9 @@ export default function AIPeoplesCourtGame({
     const words = `Judgment is entered for the ${side}, ${partyName}. This hearing is concluded.`;
     const next = deliverVerdict(addJudgeMessage(session, words), side);
     setSession(next);
+    if (initialCaseIndex === undefined) {
+      setArchive(archiveVerdict(courtCase, side));
+    }
     setShowVerdict(false);
     void requestSimulation(next, words, "deliberation");
   }
@@ -284,6 +386,12 @@ export default function AIPeoplesCourtGame({
               <p className="courtroom-note mt-3 text-xs font-semibold">
                 Claim: {courtCase.stakes}
               </p>
+              <div className="courtroom-progress mt-3 rounded-lg p-3 text-xs">
+                Difficulty {courtCase.difficulty}/5
+                <span className="mt-1 block opacity-75">
+                  {courtCase.complexity.join(" · ")}
+                </span>
+              </div>
             </div>
             <div className="courtroom-divider border-t p-4">
               <h2 className="courtroom-heading text-sm font-bold">
@@ -408,10 +516,32 @@ export default function AIPeoplesCourtGame({
                   </article>
                 ))}
                 {pending && (
-                  <div className="court-typing inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-xs">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full" />
-                    The courtroom is responding…
-                  </div>
+                  <>
+                    {liveMessage?.text ? (
+                      <article
+                        className={`court-chat ${SPEAKER_COLORS[liveMessage.speaker]} rounded-xl border p-3 sm:p-4`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold">
+                            {liveMessage.name}
+                          </p>
+                          {liveMessage.interrupted && (
+                            <span className="court-interrupt rounded-full px-2 py-0.5 text-[9px] font-bold uppercase">
+                              interrupts
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm leading-6">
+                          {liveMessage.text}
+                        </p>
+                      </article>
+                    ) : (
+                      <div className="court-typing inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-xs">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full" />
+                        The courtroom is responding…
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -505,10 +635,35 @@ export default function AIPeoplesCourtGame({
             )}
             <div className="courtroom-divider mt-5 border-t pt-4">
               <p className="courtroom-note text-[11px] leading-5">
-                Interruptions are selectively enabled every few turns. The model
-                may object, correct, or react, but cannot speak for the judge or
-                decide the case.
+                Each response is generated as one code-selected role.
+                Interruptions are separate role turns, so participants cannot
+                borrow another character's identity or private knowledge.
               </p>
+            </div>
+            <div className="courtroom-divider mt-5 border-t pt-4">
+              <h3 className="courtroom-heading text-xs font-bold uppercase">
+                Generated case archive
+              </h3>
+              <p className="courtroom-note mt-2 text-xs leading-5">
+                {archive.length} reproducible case
+                {archive.length === 1 ? "" : "s"} cached on this device.
+              </p>
+              <div className="mt-3 space-y-2">
+                {archive.slice(0, 4).map((entry) => (
+                  <button
+                    type="button"
+                    key={entry.courtCase.id}
+                    onClick={() => reopenArchivedCase(entry.courtCase)}
+                    className="courtroom-progress w-full rounded-md p-2 text-left text-[11px] transition-opacity hover:opacity-75"
+                  >
+                    <p className="font-semibold">{entry.courtCase.title}</p>
+                    <p className="mt-0.5 opacity-70">
+                      Seed {entry.courtCase.generation.seed} · Difficulty{" "}
+                      {entry.courtCase.difficulty}
+                    </p>
+                  </button>
+                ))}
+              </div>
             </div>
           </aside>
         </div>

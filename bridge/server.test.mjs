@@ -125,7 +125,7 @@ const BASE_COURT_BODY = {
   ],
   phase: "hearing",
   turnNumber: 1,
-  allowInterruptions: true,
+  speakerSequence: ["defendant", "plaintiff"],
   playerMessage: "Who opened the window?",
   memorySummary: "The case has been called.",
   memoryFacts: [],
@@ -156,18 +156,14 @@ test("health reports not installed when the alias can't be resolved", async () =
 test("court turn returns individual speakers and hidden memory", async () => {
   await withServer(
     {
-      streamChatCompletion: async () => ({
-        text: [
+      streamChatCompletion: mockStream(
+        [
           "MEMORY: Ellis admitted opening the window after watering.",
           "FACT: Ellis admits opening the window.",
-          "MESSAGES:",
-          "[defendant] I opened it because the room smelled damp.",
-          "[plaintiff] And you left it open all night.",
+          "RESPONSE:",
+          "I opened it because the room smelled damp.",
         ].join("\n"),
-        firstTokenMs: 8,
-        totalMs: 40,
-        chunks: 4,
-      }),
+      ),
     },
     async (baseUrl) => {
       const res = await fetch(`${baseUrl}/api/court/turn`, {
@@ -183,12 +179,16 @@ test("court turn returns individual speakers and hidden memory", async () => {
       );
       assert.equal(
         events.find((event) => event.type === "memory").fact,
-        "Ellis admits opening the window.",
+        "Ellis Rowe: Ellis admits opening the window.",
       );
-      assert.equal(
-        events.find((event) => event.type === "message").speaker,
-        "defendant",
-      );
+      const messages = events.filter((event) => event.type === "message");
+      assert.equal(messages[0].speaker, "defendant");
+      assert.equal(messages[1].speaker, "plaintiff");
+      const streamed = events
+        .filter((event) => event.type === "delta")
+        .map((event) => event.text)
+        .join("");
+      assert.doesNotMatch(streamed, /MEMORY:/);
     },
   );
 });

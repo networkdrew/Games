@@ -25,6 +25,7 @@ import {
   MAX_ALLOWLIST_ENTRIES,
   MAX_ALLOWLIST_HINT_LENGTH,
   MAX_BODY_BYTES,
+  MAX_COURT_BODY_BYTES,
   MAX_EXCHANGE_FIELD_LENGTH,
   MAX_FIELD_LENGTH,
   MAX_MEMORY_FACTS,
@@ -50,10 +51,14 @@ import {
   textAfterResponseMarker,
 } from "./protocol.mjs";
 import {
+  attributeCourtMemory,
   buildCourtCorrectionPrompt,
-  buildCourtSystemPrompt,
-  buildCourtUserPrompt,
-  parseCourtResponse,
+  buildCourtSpeakerSystemPrompt,
+  buildCourtSpeakerUserPrompt,
+  hasCourtResponseMarker,
+  parseCourtControl,
+  sanitizeCourtDialogue,
+  textAfterCourtResponseMarker,
 } from "./court-protocol.mjs";
 import {
   chatCompletionOnce,
@@ -241,8 +246,18 @@ function validateCourtBody(body) {
     body.turnNumber > 100
   )
     return "invalid court state";
-  if (typeof body.allowInterruptions !== "boolean")
-    return "invalid allowInterruptions";
+  if (
+    !Array.isArray(body.speakerSequence) ||
+    body.speakerSequence.length < 1 ||
+    body.speakerSequence.length > 3 ||
+    body.speakerSequence.some(
+      (speaker) =>
+        !["bailiff", "clerk", "plaintiff", "defendant", "witness"].includes(
+          speaker,
+        ),
+    )
+  )
+    return "invalid speakerSequence";
   if (typeof body.memorySummary !== "string" || body.memorySummary.length > 800)
     return "invalid memorySummary";
   if (
@@ -313,7 +328,7 @@ export function createRequestHandler(
   async function handleCourtTurn(req, res, origin) {
     let raw;
     try {
-      raw = await readBody(req, MAX_BODY_BYTES);
+      raw = await readBody(req, MAX_COURT_BODY_BYTES);
     } catch {
       sendJson(res, 413, origin, { ok: false, error: "payload too large" });
       return;
@@ -372,57 +387,138 @@ export function createRequestHandler(
         await deps.ensureModelLoaded(config);
       }
 
-      const systemPrompt = buildCourtSystemPrompt();
-      const userPrompt = buildCourtUserPrompt(body);
-      const generation = await deps.streamChatCompletion({
-        modelId: config.lmStudioId,
-        systemPrompt,
-        userPrompt,
-        maxTokens: config.maxTokens,
-        temperature: config.temperature,
-        topP: config.topP,
-        stop: config.stopSequences,
-        reasoningDisableParams: config.reasoningDisableParams,
-        signal: abortController.signal,
-      });
-
-      let parsed = parseCourtResponse(generation.text);
+      const messagesThisTurn = [];
       let corrected = false;
-      if (!parsed && generation.text) {
-        const correction = await deps.chatCompletionOnce({
+      let failed = false;
+      let firstTokenMs = null;
+      let totalMs = 0;
+      let chunks = 0;
+
+      for (const [index, speakerId] of body.speakerSequence.entries()) {
+        const participant = body.participants.find(
+          (person) => person.id === speakerId,
+        );
+        if (!participant) {
+          failed = messagesThisTurn.length === 0;
+          break;
+        }
+        const turnBody = { ...body, interruption: index > 0 };
+        const systemPrompt = buildCourtSpeakerSystemPrompt(participant);
+        const userPrompt = buildCourtSpeakerUserPrompt(
+          turnBody,
+          participant,
+          messagesThisTurn,
+        );
+        writeEvent(res, {
+          type: "speaker",
+          speaker: participant.id,
+          name: participant.name,
+          interrupted: index > 0,
+        });
+
+        let buffer = "";
+        let responseStarted = false;
+        const generation = await deps.streamChatCompletion({
           modelId: config.lmStudioId,
           systemPrompt,
-          userPrompt: buildCourtCorrectionPrompt(generation.text),
+          userPrompt,
           maxTokens: config.maxTokens,
-          temperature: 0.4,
+          temperature: config.temperature,
           topP: config.topP,
           stop: config.stopSequences,
           reasoningDisableParams: config.reasoningDisableParams,
+          signal: abortController.signal,
+          onDelta: (chunk) => {
+            if (responseStarted) {
+              writeEvent(res, { type: "delta", text: chunk });
+              return;
+            }
+            buffer += chunk;
+            if (hasCourtResponseMarker(buffer)) {
+              responseStarted = true;
+              const remainder = textAfterCourtResponseMarker(buffer);
+              if (remainder)
+                writeEvent(res, { type: "delta", text: remainder });
+            }
+          },
         });
-        parsed = parseCourtResponse(correction);
-        corrected = parsed !== null;
-      }
+        if (firstTokenMs === null) firstTokenMs = generation.firstTokenMs;
+        totalMs += generation.totalMs ?? 0;
+        chunks += generation.chunks ?? 0;
 
-      if (!parsed) {
-        writeEvent(res, { type: "unavailable", reason: "invalid-response" });
-      } else {
+        let raw = generation.text ?? buffer;
+        let control = parseCourtControl(raw);
+        let dialogue = responseStarted
+          ? sanitizeCourtDialogue(textAfterCourtResponseMarker(raw))
+          : null;
+
+        if (!dialogue || !control.memorySummary) {
+          if (responseStarted) {
+            writeEvent(res, {
+              type: "speaker",
+              speaker: participant.id,
+              name: participant.name,
+              interrupted: index > 0,
+            });
+          }
+          const correction = await deps.chatCompletionOnce({
+            modelId: config.lmStudioId,
+            systemPrompt,
+            userPrompt: buildCourtCorrectionPrompt(raw, participant),
+            maxTokens: config.maxTokens,
+            temperature: 0.35,
+            topP: config.topP,
+            stop: config.stopSequences,
+            reasoningDisableParams: config.reasoningDisableParams,
+          });
+          raw = correction ?? "";
+          control = parseCourtControl(raw);
+          dialogue = sanitizeCourtDialogue(textAfterCourtResponseMarker(raw));
+          if (dialogue && control.memorySummary) {
+            corrected = true;
+            writeEvent(res, { type: "delta", text: dialogue });
+          }
+        }
+
+        if (!dialogue || !control.memorySummary) {
+          failed = messagesThisTurn.length === 0;
+          break;
+        }
+        const message = {
+          speaker: participant.id,
+          name: participant.name,
+          text: dialogue,
+          interrupted: index > 0,
+        };
+        messagesThisTurn.push(message);
         writeEvent(res, {
           type: "memory",
-          summary: parsed.memorySummary,
-          fact: parsed.memoryFact,
+          summary: attributeCourtMemory(
+            control.memorySummary,
+            participant.name,
+            700,
+          ),
+          fact: attributeCourtMemory(
+            control.memoryFact,
+            participant.name,
+            MAX_MEMORY_FACT_LENGTH,
+          ),
         });
-        for (const message of parsed.messages) {
-          writeEvent(res, { type: "message", ...message });
-        }
+        writeEvent(res, { type: "message", ...message });
+      }
+
+      if (failed) {
+        writeEvent(res, { type: "unavailable", reason: "invalid-response" });
       }
       writeEvent(res, {
         type: "done",
         stats: {
-          fallback: parsed === null,
+          fallback: failed,
           corrected,
-          firstTokenMs: generation.firstTokenMs,
-          totalMs: generation.totalMs,
-          chunks: generation.chunks,
+          firstTokenMs,
+          totalMs,
+          chunks,
+          speakers: messagesThisTurn.length,
         },
       });
       res.end();

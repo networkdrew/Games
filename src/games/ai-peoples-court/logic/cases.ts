@@ -1,6 +1,6 @@
 import type { CourtCase } from "./types";
 
-export const courtCases: readonly CourtCase[] = [
+export const authoredCourtCases: readonly CourtCase[] = [
   {
     id: "orchid-window",
     docket: "CIV-2041",
@@ -8,6 +8,9 @@ export const courtCases: readonly CourtCase[] = [
     claim:
       "A rare orchid died while its owner was away. The owner says her neighbor ignored written care instructions.",
     stakes: "$420 replacement value",
+    difficulty: 2,
+    complexity: ["omitted instruction", "documented admission"],
+    generation: { seed: 2041, archetypeId: "authored-orchid", version: 1 },
     privateTruth:
       "Ellis opened the studio window after watering the orchid and genuinely forgot to close it. The overnight freeze killed the plant. Mara never gave an explicit window instruction. Ellis initially minimizes this mistake but admits it when pressed about the text message.",
     plaintiff: {
@@ -104,6 +107,9 @@ export const courtCases: readonly CourtCase[] = [
     claim:
       "A neighborhood club paid for a parade float that was dismantled before the advertised rain date.",
     stakes: "$650 service refund",
+    difficulty: 3,
+    complexity: ["preliminary promise", "final written agreement"],
+    generation: { seed: 2088, archetypeId: "authored-float", version: 1 },
     privateTruth:
       "The signed final invoice covered Saturday only and the club declined optional storage. Nia tried twice to warn Tobin before dismantling. Tobin relied on an earlier conditional email without reading the final order.",
     plaintiff: {
@@ -200,6 +206,9 @@ export const courtCases: readonly CourtCase[] = [
     claim:
       "A cafe rejected a commissioned mural because the finished robot was orange instead of the requested copper.",
     stakes: "$900 final payment",
+    difficulty: 2,
+    complexity: ["subjective specification", "approval by conduct"],
+    generation: { seed: 2117, archetypeId: "authored-mural", version: 1 },
     privateTruth:
       "Sela followed the signed copper/orange language and matched the approved vivid sketch. Oren saw the first day's orange paint and stayed silent, hoping later highlights would change it. The work was completed as approved.",
     plaintiff: {
@@ -293,7 +302,9 @@ export const courtCases: readonly CourtCase[] = [
 ];
 
 export function getCourtCase(caseId: string): CourtCase {
-  const courtCase = courtCases.find((candidate) => candidate.id === caseId);
+  const courtCase = authoredCourtCases.find(
+    (candidate) => candidate.id === caseId,
+  );
   if (!courtCase) throw new Error(`Unknown court case: ${caseId}`);
   return courtCase;
 }

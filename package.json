@@ -24,6 +24,7 @@
     "deploy": "npm run build && wrangler deploy",
     "bridge": "node bridge/server.mjs",
     "bridge:test": "node --test bridge/*.test.mjs",
+    "court:verify": "node scripts/verify-live-court.mjs",
     "play": "powershell -ExecutionPolicy Bypass -File \"./Start-AIDungeonDoor.ps1\"",
     "court:play": "powershell -ExecutionPolicy Bypass -File \"./Start-AIPeoplesCourt.ps1\""
   },

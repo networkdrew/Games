@@ -25,7 +25,7 @@ export interface CourtTurnRequest {
   participants: CourtParticipantWire[];
   phase: "opening" | "hearing" | "deliberation";
   turnNumber: number;
-  allowInterruptions: boolean;
+  speakerSequence: CourtParticipantWire["id"][];
   playerMessage: string;
   memorySummary: string;
   memoryFacts: string[];
@@ -46,6 +46,13 @@ export type CourtEvent =
       friendlyName?: string;
     }
   | { type: "loading" }
+  | {
+      type: "speaker";
+      speaker: CourtParticipantWire["id"];
+      name: string;
+      interrupted: boolean;
+    }
+  | { type: "delta"; text: string }
   | { type: "memory"; summary: string; fact: string | null }
   | ({ type: "message" } & CourtGeneratedMessage)
   | { type: "unavailable"; reason: string }
@@ -55,7 +62,7 @@ export type CourtEvent =
 export interface CourtTurnResult {
   messages: CourtGeneratedMessage[];
   memorySummary: string | null;
-  memoryFact: string | null;
+  memoryFacts: string[];
   unavailable: boolean;
   aborted?: boolean;
 }
@@ -146,7 +153,7 @@ export class CourtBridgeClient implements CourtGameClient {
     const result: CourtTurnResult = {
       messages: [],
       memorySummary: null,
-      memoryFact: null,
+      memoryFacts: [],
       unavailable: false,
     };
 
@@ -163,7 +170,9 @@ export class CourtBridgeClient implements CourtGameClient {
         result.messages.push({ speaker: event.speaker, text: event.text });
       } else if (event.type === "memory") {
         result.memorySummary = event.summary;
-        result.memoryFact = event.fact;
+        if (event.fact && !result.memoryFacts.includes(event.fact)) {
+          result.memoryFacts.push(event.fact);
+        }
       } else if (event.type === "unavailable" || event.type === "error") {
         result.unavailable = true;
       }

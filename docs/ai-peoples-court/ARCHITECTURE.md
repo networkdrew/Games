@@ -1,50 +1,84 @@
 # AI People's Court architecture
 
 ```text
-human judge
-  -> React chat island
-    -> fixed POST /api/court/turn contract
-      -> loopback OpenGames bridge
-        -> local LM Studio model as bounded ensemble cast
+seed + difficulty
+  -> reusable dispute archetype/content pools
+    -> immutable generated case truth, evidence, cast, and complications
+      -> human judge's free-text turn
+        -> code-selected speaker sequence
+          -> one role-confined local-model generation per speaker
+            -> hidden rolling memory + streamed visible dialogue
 ```
 
-## Authority boundaries
+## Procedural case engine
 
-Code owns:
+`logic/generator.ts` is deterministic for a given seed, generator version, and
+difficulty. It combines:
 
-- fictional case truth, exhibits, cast, and private knowledge;
-- valid speaker identities and phases;
-- transcript and memory limits;
-- interruption scheduling;
-- the human judge's words and verdict.
+- dispute archetypes with their own coherent truth rules;
+- names, roles, objects/services, stakes, and voice pools;
+- winning-side variants;
+- difficulty-driven conflicting evidence and witness uncertainty;
+- exhibits, private knowledge, complexity labels, and an explanatory ruling.
 
-The local model owns:
+The content-pack boundary is the `Archetype` interface. New dispute families
+can be added without changing the court UI, bridge, transcript, memory, or
+verdict engine. Seeds make generated cases reproducible for debugging, replay,
+sharing, and future remix systems.
 
-- in-character dialogue;
-- which permitted character responds;
-- natural reactions, objections, and allowed interruptions;
-- a proposed rolling summary and durable continuity fact.
+`logic/archive.ts` stores up to 30 versioned generated cases and outcomes in
+local storage. The cache fails open: blocked or full storage never prevents a
+hearing. Stored generation metadata leaves room for future systems to reuse a
+case, archetype, cast member, evidence pattern, or difficulty profile.
 
-The bridge never accepts an arbitrary system prompt, model id, upstream URL,
-or speaker identity. It validates a bounded court request, builds the prompts
-server-side, parses a fixed response protocol, and emits NDJSON events. Model
-memory metadata is sent as a hidden `memory` event; player-facing lines are
-separate `message` events.
+## Role-safe model generation
 
-## Browser state
+The browser selects a bounded sequence of speaker ids from the judge's words
+and procedural state. Named/role-addressed questions go to that person.
+Unaddressed questions alternate between the parties. Selected turns add a
+separate opposing-party interruption.
 
-`CourtSession` stores the current case id, visible transcript, rolling summary,
-durable facts, turn number, and final verdict. A new case creates a fresh
-session. Recent transcript is deliberately clipped before each request; the
-rolling summary preserves older continuity without unbounded context growth.
+The bridge performs one generation per speaker. Its system prompt includes
+only that active participant's identity, voice, motives, and private
+knowledge, and forbids writing another role. This prevents an ensemble model
+response from labeling a defendant's experience as witness testimony.
 
-## Bridge integration
+Each generation uses the Dungeon Door pattern:
 
-The court reuses the existing health check, exact model resolution, explicit
-LM Studio load, origin allowlist, loopback binding, rate limit, cancellation,
-and one-generation-at-a-time rule. Court routes are:
+```text
+MEMORY: hidden rolling-summary proposal
+FACT: hidden durable fact proposal
+RESPONSE: visible role-confined dialogue
+```
 
-- `POST /api/court/ensure`
-- `POST /api/court/turn`
+The bridge buffers `MEMORY` and `FACT`, tolerantly locates `RESPONSE:` on its
+own line or inline, and streams only dialogue deltas. A malformed response
+gets one compact correction retry. Speaker identity comes from code, never
+from model output.
 
-Dungeon endpoints and behavior remain intact.
+## Continuity layers
+
+Every generation receives:
+
+1. immutable case truth;
+2. active character private knowledge and motives;
+3. code-authored exhibits;
+4. an attributed rolling summary;
+5. up to eight attributed durable facts;
+6. the latest twelve transcript messages, including earlier speakers in the
+   same multi-speaker turn.
+
+All fields have hard size caps. Memory entries are attributed to the active
+speaker before returning to the browser, so first-person model summaries
+cannot become ambiguous when the next role reads them.
+
+## Authority and security
+
+Code owns case truth, valid roles, speaker selection, interruption timing,
+difficulty, evidence, procedure, and verdict. The local model owns only one
+active character's dialogue and bounded memory proposals.
+
+The court reuses the loopback-only OpenGames bridge, origin allowlist, exact
+model resolution, explicit LM Studio load, cancellation, rate limiting, and
+one-generation-at-a-time rule. It never accepts an arbitrary prompt, model id,
+upstream URL, or public completion request.

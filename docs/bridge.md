@@ -222,11 +222,12 @@ should be re-confirmed once the real deployment exists.
 The same loopback process also exposes `POST /api/court/ensure` and
 `POST /api/court/turn`. The court request contains a bounded fictional case,
 fixed participant ids, the judge's latest free-text statement, and capped
-memory/transcript fields. `bridge/court-protocol.mjs` supplies the system
-prompt and accepts only bailiff, clerk, plaintiff, defendant, and witness
-messages. The model cannot emit a judge message or verdict. Hidden rolling
-memory and visible participant messages are returned as separate NDJSON
-events.
+memory/transcript fields and a code-selected speaker sequence.
+`bridge/court-protocol.mjs` generates each speaker separately, confines the
+model to that one identity, and uses the same hidden-control-before-RESPONSE
+shape as Dungeon Door. The model cannot emit a judge message or verdict.
+Hidden attributed memory is buffered while visible dialogue is streamed as
+NDJSON deltas under the code-owned speaker identity.
 
 If it were ever blocked, the fallback is already built in:
 `Start-AIDungeonDoor.ps1 -Dev` serves the identical static build from

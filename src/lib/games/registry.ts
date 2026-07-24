@@ -29,15 +29,15 @@ const rawGames = [
     slug: "ai-peoples-court",
     name: "AI People's Court",
     tagline:
-      "Preside over a living local-AI courtroom where distinct characters testify, object, interrupt, and remember.",
+      "Preside over endlessly generated local-AI cases where distinct characters testify, object, interrupt, and remember.",
     description: [
       "Speak freely as the judge while a local language model performs the bailiff, clerk, plaintiffs, defendants, and witnesses—each with a distinct voice, motives, and private knowledge.",
-      "A rolling memory ledger preserves testimony and contradictions across the hearing. Case truth and procedure stay bounded by game code, and you alone control the verdict.",
+      "A seeded procedural engine creates reproducible names, disputes, evidence, witnesses, difficulty, and complications. A rolling memory ledger preserves testimony and contradictions, while you alone control the verdict.",
     ],
     categoryId: "simulation",
     kind: "local-ai",
     tags: ["courtroom", "judge", "simulation", "local ai", "roleplay"],
-    playTime: "10–20 min per case",
+    playTime: "Endless · 10–20 min per case",
     featured: true,
     addedAt: "2026-07-22",
     playable: true,

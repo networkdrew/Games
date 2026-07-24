@@ -19,6 +19,10 @@ export const ALLOWED_ORIGINS = [
 
 // --- Request body caps (POST /api/dungeon/turn) ---------------------------
 export const MAX_BODY_BYTES = 14_000;
+// Court turns carry five bounded character profiles plus transcript memory.
+// This cap matches the validator's worst-case accepted shape while remaining
+// far below a general prompt/proxy payload.
+export const MAX_COURT_BODY_BYTES = 24_000;
 export const MAX_FIELD_LENGTH = 900; // characterPrompt, secretTruth, environment
 export const MAX_STATE_SUMMARY_LENGTH = 400;
 export const MAX_ALLOWLIST_ENTRIES = 16;

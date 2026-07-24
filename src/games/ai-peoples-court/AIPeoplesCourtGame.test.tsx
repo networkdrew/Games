@@ -38,7 +38,7 @@ function makeClient(): CourtGameClient & {
               },
             ],
             memorySummary: "The case was called and Mara opened.",
-            memoryFact: "Mara says she trusted Ellis with the orchid.",
+            memoryFacts: ["Mara says she trusted Ellis with the orchid."],
             unavailable: false,
           };
         }
@@ -50,7 +50,7 @@ function makeClient(): CourtGameClient & {
             },
           ],
           memorySummary: "Ellis admitted opening the window.",
-          memoryFact: "Ellis admitted opening the window.",
+          memoryFacts: ["Ellis admitted opening the window."],
           unavailable: false,
         };
       },

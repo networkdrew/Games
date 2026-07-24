@@ -2,40 +2,40 @@
 
 ## Current status
 
-AI People's Court is a local-LLM chat simulation. The human player presides as
-judge and can address anyone in free text, call the witness, manage order, and
-deliver the final verdict.
+AI People's Court is an endless, procedural local-LLM courtroom simulation.
+The human player presides as judge, speaks freely, manages the hearing, and
+alone controls the verdict.
 
-The local model performs a cast with separate identities:
+Each new case is generated from a reproducible seed with changing:
 
-- bailiff and clerk;
-- plaintiff and defendant;
-- one case-specific witness.
+- fictional names and roles;
+- dispute archetype, subject, stakes, and case truth;
+- evidence and which side it supports;
+- witness knowledge and reliability;
+- difficulty from 1–5 and layered complications;
+- character voices, motives, admissions, evasions, and dialogue.
 
-The model can produce a natural follow-up or interruption on selected turns.
-Generated messages are labeled and rendered individually in the transcript.
+Generated cases and outcomes are cached locally in a versioned 30-case
+archive. The current generator includes borrowed-property, service-scope, and
+delivery-custody content packs, with a stable interface for more.
 
-## Continuity
+## Local-model reliability
 
-Each request includes three memory layers:
+Court dialogue now uses the same hidden-control/visible-response shape proven
+by AI Dungeon Door. Code chooses one active role per generation. The bridge
+buffers hidden memory, accepts both inline and newline `RESPONSE:` markers,
+streams only visible dialogue, and retries malformed output once.
 
-1. immutable code-authored case truth and each character's private knowledge;
-2. a compact rolling summary and up to eight durable testimony facts;
-3. the ten most recent visible transcript messages.
+Interruptions are separate code-selected generations, so a witness cannot
+accidentally inherit the defendant's identity or private experience.
 
-The bridge hides memory metadata from the player-facing chat, rejects unknown
-speaker identities, prevents the model from speaking as the judge, and retries
-one malformed response. The player and code remain authoritative over the
-verdict.
+## Continuity and safety
 
-## Runtime
+The local model receives immutable truth, character-private knowledge,
+exhibits, attributed rolling memory, durable facts, and recent transcript.
+Memory is capped and attributed before reuse. The model cannot speak as the
+judge, choose the verdict, invent a speaker id, or access a cloud service.
 
-The game requires the same local stack as AI Dungeon Door:
-
-- LM Studio's local server;
-- the single loopback OpenGames bridge on `127.0.0.1:8934`;
-- the configured local model.
-
-There is no cloud AI or paid API. Launch with `npm run court:play` or
-`Start AI Peoples Court.bat`. If the local cast is unavailable, the interface
-reports that truthfully and does not substitute fake scripted dialogue.
+Run `npm run court:play` to launch the game and local bridge. Run
+`npm run court:verify -- "your test question"` to inspect a real local-model
+court response and parser result.

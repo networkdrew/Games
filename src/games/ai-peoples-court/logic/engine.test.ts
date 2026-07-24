@@ -8,7 +8,7 @@ import {
 
 describe("court engine", () => {
   it("keeps a rolling transcript and durable memory ledger", () => {
-    let session = createCourtSession(0);
+    let session = createCourtSession("orchid-window");
     session = addJudgeMessage(session, "Call the plaintiff.");
     session = applySimulatedTurn(
       session,
@@ -25,7 +25,7 @@ describe("court engine", () => {
         },
       ],
       "The judge called Mara; Ellis reacted.",
-      "Ellis objected before a question was asked.",
+      ["Ellis objected before a question was asked."],
     );
 
     expect(session.transcript).toHaveLength(3);
@@ -37,7 +37,7 @@ describe("court engine", () => {
   });
 
   it("makes the human verdict final", () => {
-    const session = createCourtSession(0);
+    const session = createCourtSession("orchid-window");
     const decided = deliverVerdict(session, "plaintiff");
     expect(decided.verdict).toBe("plaintiff");
     expect(deliverVerdict(decided, "defendant")).toBe(decided);

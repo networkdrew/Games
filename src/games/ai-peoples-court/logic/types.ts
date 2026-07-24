@@ -36,6 +36,13 @@ export interface CourtCase {
   title: string;
   claim: string;
   stakes: string;
+  difficulty: 1 | 2 | 3 | 4 | 5;
+  complexity: readonly string[];
+  generation: {
+    seed: number;
+    archetypeId: string;
+    version: 1;
+  };
   privateTruth: string;
   plaintiff: CourtParty;
   defendant: CourtParty;
@@ -53,6 +60,13 @@ export interface CourtSession {
   memoryFacts: readonly string[];
   turnNumber: number;
   verdict: PartySide | null;
+}
+
+export interface ArchivedCourtCase {
+  courtCase: CourtCase;
+  generatedAt: string;
+  verdict: PartySide | null;
+  completedAt: string | null;
 }
 
 export type CourtSpeaker =

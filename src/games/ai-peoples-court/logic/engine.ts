@@ -1,4 +1,3 @@
-import { courtCases, getCourtCase } from "./cases";
 import type {
   CourtSession,
   CourtSpeaker,
@@ -6,13 +5,10 @@ import type {
   TranscriptMessage,
 } from "./types";
 
-export function createCourtSession(caseIndex = 0): CourtSession {
-  const normalizedIndex =
-    ((caseIndex % courtCases.length) + courtCases.length) % courtCases.length;
-  const courtCase = courtCases[normalizedIndex];
-  if (!courtCase) throw new Error("AI People's Court has no cases");
+export function createCourtSession(caseId: string): CourtSession {
+  if (!caseId) throw new Error("AI People's Court requires a case id");
   return {
-    caseId: courtCase.id,
+    caseId,
     transcript: [],
     memorySummary: "",
     memoryFacts: [],
@@ -56,7 +52,7 @@ export function applySimulatedTurn(
     text: string;
   }[],
   memorySummary: string,
-  memoryFact: string | null,
+  memoryFacts: readonly string[],
 ): CourtSession {
   let next = session;
   messages.forEach((message, index) => {
@@ -68,10 +64,10 @@ export function applySimulatedTurn(
   return {
     ...next,
     memorySummary,
-    memoryFacts:
-      memoryFact && !next.memoryFacts.includes(memoryFact)
-        ? [...next.memoryFacts, memoryFact].slice(-8)
-        : next.memoryFacts,
+    memoryFacts: [
+      ...next.memoryFacts,
+      ...memoryFacts.filter((fact) => !next.memoryFacts.includes(fact)),
+    ].slice(-8),
     turnNumber: session.turnNumber + 1,
   };
 }
@@ -81,6 +77,5 @@ export function deliverVerdict(
   verdict: PartySide,
 ): CourtSession {
   if (session.verdict) return session;
-  getCourtCase(session.caseId);
   return { ...session, verdict };
 }
