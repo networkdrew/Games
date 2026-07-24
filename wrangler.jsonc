@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "compatibility_date": "2026-07-21",
   "compatibility_flags": ["global_fetch_strictly_public"],
-  "name": "opengames",
+  "name": "games",
   "main": "@astrojs/cloudflare/entrypoints/server",
   "assets": {
     // Astro splits adapter builds into dist/client (static assets) and
